@@ -8,9 +8,22 @@ using StaticArrays
 
 include("squared_exponential.jl")
 
-export bound_image
+export bound_image, bound_images
 
-" 
+""" 
+    bound_images
+
+Generate overapproximations of posterior mean and covariance functions for a collection of extents.
+"""
+function bound_images(extents, gps)
+    image_bounds = Vector{Any}(undef, length(extents))
+    for i=1:length(extents)
+        image_bounds[i] = bound_image(extents[i], gps)
+    end
+    return image_bounds
+end
+
+""" 
     bound_image
 
 Generate overapproximations of posterior mean and covariance functions using one of several methods.
@@ -18,10 +31,11 @@ Generate overapproximations of posterior mean and covariance functions using one
 - `extent::Dict` - Discrete state extent 
 - `gp_info_dict::Dict` - Dictionary with GP set and RKHS info
 - `data_deps::Dict` - Dictionary indicating input-output data dependencies
-"
+"""
 function bound_image(extent, gps::Vector{Any}; data_deps=nothing, known_component=nothing, σ_ubs=nothing, σ_approx_flag=false)
     # TODO: mod keyword handling and document
     ndims = length(extent[1]) 
+    #! EXTENT HANDLING INCORRECT?
     # Assume that the extent is a hyperrectangle with lower and upper corners
     # lbf = Array(extent[1])
     # ubf = Array(extent[2])
@@ -44,9 +58,9 @@ function bound_extent_dim(gp, lbf, ubf)
     # # lbf = lb[findall(.>(0), data_deps[dim_key][:])]
     # ubf = ub[findall(.>(0), data_deps[dim_key][:])]
     # TODO: Avoid deep copy! At all costs! For 2000 dps, 404MB vs 38MB!
-    # x_lb, μ_L_lb, μ_L_ub = compute_μ_bounds_bnb(deepcopy(gps[i]), lbf, ubf) 
+    # x_lb, μ_L_lb, μ_L_ub = compute_μ_bounds_bnb(deepcopy(gp), lbf, ubf) 
     _, μ_L_lb, _ = compute_μ_bounds_bnb(gp, lbf, ubf) 
-    # x_ub, μ_U_lb, μ_U_ub = compute_μ_bounds_bnb(deepcopy(gps[i]), lbf, ubf, max_flag=true)
+    # x_ub, μ_U_lb, μ_U_ub = compute_μ_bounds_bnb(deepcopy(gp), lbf, ubf, max_flag=true)
     _, _, μ_U_ub = compute_μ_bounds_bnb(gp, lbf, ubf, max_flag=true)
 
     # if σ_approx_flag

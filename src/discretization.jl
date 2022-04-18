@@ -26,3 +26,14 @@ end
 function SA_to_polytope()
     nothing
 end
+
+function extent_to_SA(extent)
+	ndims = length(extent[1])
+	ncols = 2*length(extent) 		# Probably always 2
+	res = zeros(ndims, ncols)
+	res[:,1] = extent[1]
+	res[:,2] = [extent[1][2], extent[2][1]]
+	res[:,3] = extent[2]
+	res[:,4] = [extent[1][1], extent[2][2]]
+	return SMatrix{ndims, ncols}(res)
+end
