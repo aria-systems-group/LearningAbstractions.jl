@@ -40,6 +40,7 @@ function generate_pairwise_transitions(grid, images, all_state_means, all_image_
     P̌ = spzeros(num_states, num_states)
     P̂ = spzeros(num_states, num_states) 
 
+    p = Progress(num_states^2, desc="Computing transition intervals...", dt=0.01)
     for i in 1:num_states 
         image = images[i]
         mean_image = all_image_means[i]
@@ -50,6 +51,7 @@ function generate_pairwise_transitions(grid, images, all_state_means, all_image_
             if true || fast_check(mean_image, all_state_means[j], 0.0, 0.125, 0.125) #! FIX THIS
                 P̌[i,j], P̂[i,j] = transition_inverval(image, statep_sa, gp_rkhs_info=gp_rkhs_info, σ_bounds = σ_bounds) 
             end
+            next!(p)
         end
     end
     return P̌, P̂ 
@@ -74,7 +76,7 @@ function transition_inverval(X,Y; gp_rkhs_info=nothing, σ_bounds=nothing)
         ===#
         if containment_flag     
             if !isnothing(gp_rkhs_info)
-                p̌ = 1. #chowdhury_rkhs_prob_vector(gp_rkhs_info, σ_bounds, min_distance) 
+                p̌ = chowdhury_rkhs_prob_vector(gp_rkhs_info, σ_bounds, min_distance) 
             else
                 p̌ = 1.          
             end
@@ -86,8 +88,7 @@ function transition_inverval(X,Y; gp_rkhs_info=nothing, σ_bounds=nothing)
     ===#
     else
         if !isnothing(gp_rkhs_info)
-            # p̂ = 1 - chowdhury_rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis)
-            p̂ = 0.
+            p̂ = 1 - chowdhury_rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis)
         else
             p̂ = 0 
         end
