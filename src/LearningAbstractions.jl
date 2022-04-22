@@ -42,11 +42,10 @@ function find_state_images(grid, gps)
 	Threads.@threads for i=1:n_states      # Implicit ordering of the states remains the same
 		state = LearningAbstractions.polytope_to_SA(grid[i])
 		all_states_SA[i] = state
-		#! state indeces are wrong, fix later
 		image, all_state_σ_bounds[i] = LearningAbstractions.GPBounding.bound_image([state[:,1], state[:,end-1]], gps, neg_gps) 
 		all_state_images[i] = extent_to_SA(image)
-		all_state_means[i] = (state[:,1] + state[:,3])/2
-		all_image_means[i] = (image[1] + image[2])/2
+		all_state_means[i] = (state[:,1] + state[:,end-1])/2
+		all_image_means[i] = (all_state_images[i][:,1] + all_state_images[i][:,end-1])/2
 		next!(p)
 	end
 

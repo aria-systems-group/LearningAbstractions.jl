@@ -34,21 +34,31 @@ function generate_all_transitions(grid, images, all_state_means, all_image_means
     return P̌, P̂ 
 end
 
-function generate_pairwise_transitions(grid, images, all_state_means, all_image_means; gp_rkhs_info=nothing, σ_bounds_all=nothing)
+function generate_pairwise_transitions(states, images, all_state_means, all_image_means; gp_rkhs_info=nothing, σ_bounds_all=nothing)
 
-    num_states = length(grid)
+    num_states = length(states)
     P̌ = spzeros(num_states, num_states)
     P̂ = spzeros(num_states, num_states) 
+
+    # TODO: Replace this when grid is replaced
+    state_radius = norm(states[1][:,1] - states[1][:,end-1])/2
 
     p = Progress(num_states^2, desc="Computing transition intervals...", dt=0.01)
     for i in 1:num_states 
         image = images[i]
+        image_radius = norm(image[:,1] - image[:,end-1])/2
         mean_image = all_image_means[i]
-        σ_bounds = isnothing(gp_rkhs_info) ? nothing : σ_bounds_all[i]  
+        if !isnothing(gp_rkhs_info)
+            σ_bounds = σ_bounds_all[i]  
+            ϵ_crit = calculate_ϵ_crit(gp_rkhs_info, σ_bounds)
+        else
+            σ_bounds = nothing
+            ϵ_crit = 0. 
+        end
 
         for j in 1:num_states 
-            statep_sa = grid[j]
-            if true || fast_check(mean_image, all_state_means[j], 0.0, 0.125, 0.125) #! FIX THIS
+            statep_sa = states[j]
+            if fast_check(mean_image, all_state_means[j], ϵ_crit, image_radius, state_radius) 
                 P̌[i,j], P̂[i,j] = transition_inverval(image, statep_sa, gp_rkhs_info=gp_rkhs_info, σ_bounds = σ_bounds) 
             end
             next!(p)
@@ -58,6 +68,7 @@ function generate_pairwise_transitions(grid, images, all_state_means, all_image_
 end
 
 "Determine the set of states that will have non-zero transition probability upper bounds."
+# ! Need to verify this fast check
 function fast_check(mean_pt, mean_target, ϵ_crit, image_radius, set_radius)
     flag = norm(mean_pt - mean_target) < ϵ_crit + image_radius + set_radius
     return flag
@@ -160,3 +171,23 @@ function get_axes(shapes::Vector)
     end
     return axes
 end
+
+"""
+    calculate_ϵ_crit
+
+Calculates the value of epsilon that a.s. bounds the RKHS regression error.
+"""
+function calculate_ϵ_crit(gp_info, σ_bounds)
+    candidates = []
+    for i=1:length(σ_bounds)
+        ϵ = 0.01
+        P = 0.0
+        while P != 1.0
+            P = 1. - chowdhury_rkhs_prob_vector(gp_info, σ_bounds, ϵ) 
+            ϵ *= 1.5
+        end
+        push!(candidates, ϵ)
+    end
+    return maximum(candidates)
+end
+
