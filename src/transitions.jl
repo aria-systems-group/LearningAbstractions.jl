@@ -13,7 +13,7 @@ function distance(X::SMatrix, Y::SMatrix)
     n = size(X,1)
     dir = @SVector(rand(n)) .- 0.5
     # TODO: Can this be made faster?
-    return minimum_distance(X, Y, dir)
+    return minimum_distance(X, Y, dir, atol=1e-6)
 end
 
 function generate_all_transitions(grid, images, all_state_means, all_image_means, full_set; gp_rkhs_info=nothing, σ_bounds_all=nothing)

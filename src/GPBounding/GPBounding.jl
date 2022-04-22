@@ -32,10 +32,9 @@ Generate overapproximations of posterior mean and covariance functions using one
 - `gp_info_dict::Dict` - Dictionary with GP set and RKHS info
 - `data_deps::Dict` - Dictionary indicating input-output data dependencies
 """
-function bound_image(extent, gps::Vector{Any}; data_deps=nothing, known_component=nothing, σ_ubs=nothing, σ_approx_flag=false)
+function bound_image(extent, gps::Vector{Any}, neg_gps::Vector{Any}; data_deps=nothing, known_component=nothing, σ_ubs=nothing, σ_approx_flag=false)
     # TODO: mod keyword handling and document
     ndims = length(extent[1]) 
-    #! EXTENT HANDLING INCORRECT?
     # Assume that the extent is a hyperrectangle with lower and upper corners
     # lbf = Array(extent[1])
     # ubf = Array(extent[2])
@@ -49,19 +48,19 @@ function bound_image(extent, gps::Vector{Any}; data_deps=nothing, known_componen
         #     # TODO: Assume an identity form for now. Requires its own bounding process.
         #     post_extent[dim_key] = [extent[dim_key][1] + μ_L_lb, extent[dim_key][2] + μ_U_ub] 
         # else
-        image_extent[i], σ_bounds[i] = bound_extent_dim(gps[i], extent[1], extent[2])
+        image_extent[i], σ_bounds[i] = bound_extent_dim(gps[i], neg_gps[i], extent[1], extent[2])
     end
     return image_extent, σ_bounds
 end
 
-function bound_extent_dim(gp, lbf, ubf)
+function bound_extent_dim(gp, neg_gp, lbf, ubf)
     # # lbf = lb[findall(.>(0), data_deps[dim_key][:])]
     # ubf = ub[findall(.>(0), data_deps[dim_key][:])]
     # TODO: Avoid deep copy! At all costs! For 2000 dps, 404MB vs 38MB!
     # x_lb, μ_L_lb, μ_L_ub = compute_μ_bounds_bnb(deepcopy(gp), lbf, ubf) 
     _, μ_L_lb, _ = compute_μ_bounds_bnb(gp, lbf, ubf) 
     # x_ub, μ_U_lb, μ_U_ub = compute_μ_bounds_bnb(deepcopy(gp), lbf, ubf, max_flag=true)
-    _, _, μ_U_ub = compute_μ_bounds_bnb(gp, lbf, ubf, max_flag=true)
+    _, _, μ_U_ub = compute_μ_bounds_bnb(neg_gp, lbf, ubf, max_flag=true)
 
     # if σ_approx_flag
     _, σ_U_lb, σ_U_ub = compute_σ_ub_bounds_approx(gp, lbf, ubf) 
@@ -237,12 +236,13 @@ function compute_σ_ub_bounds_approx(gp, x_L, x_U)
     mt = MersenneTwister(11)
     σ2_best = -Inf
     # Get N samples uniformly dist.
-    x_samp = zeros(2,1)
+    x_samp = zeros(length(x_L),1)
     # @info x_samp
     for i=1:N
         # x_samp = vcat([rand(mt, Uniform(x_L[1], x_U[1]), 1, 1)[1], rand(mt, Uniform(x_L[2], x_U[1]), 1, 1)[1]])
-        x_samp[1] = rand(mt, Uniform(x_L[1], x_U[1]), 1, 1)[1]
-        x_samp[2] = rand(mt, Uniform(x_L[2], x_U[2]), 1, 1)[1]
+        x_samp = rand(mt, Uniform(x_L[1], x_U[1]), length(x_L), 1) 
+        # x_samp[1] = rand(mt, Uniform(x_L[1], x_U[1]), 1, 1)[1]
+        # x_samp[2] = rand(mt, Uniform(x_L[2], x_U[2]), 1, 1)[1]
         # @info x_samp
         _, σ2 = predict_f(gp, x_samp)
         if σ2[1] > σ2_best

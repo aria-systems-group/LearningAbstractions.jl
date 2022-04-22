@@ -6,7 +6,7 @@ function compute_μ_lower_bound(gp, x_L, x_U, theta_vec_train_squared, theta_vec
     @views x_train = gp.x # Confirmed
     m = gp.nobs # Confirmed
     n = gp.dim # Dimension of input
-    α_train = minmax_factor*gp.alpha 
+    α_train = gp.alpha 
     
     sigma_prior = gp.kernel.σ2 # confirmed
     α_train *= sigma_prior # confirmed
@@ -17,10 +17,8 @@ function compute_μ_lower_bound(gp, x_L, x_U, theta_vec_train_squared, theta_vec
     x_mu_lb = hcat(x_mu_lb) # TODO: get around hcat?
     
     lb = minmax_factor*(f_val + C + a_i_sum)
-    gp.alpha *= minmax_factor
     ub, _ = predict_f(gp, x_mu_lb)  # TODO: This is very slow!!!! 1/2 a millesecond. Maybe not too slow.
     ub = ub[1]*minmax_factor
-    gp.alpha *= minmax_factor
     
     if upper_flag
         return x_mu_lb, ub, lb
