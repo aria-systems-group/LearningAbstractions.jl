@@ -39,9 +39,7 @@ function find_state_images(grid, gps, grid_spacing)
 		push!(neg_gps, neg_gp)
 	end
 
-	# ! This does not work with threading
-	# Threads.@threads
-	for (i, grid_lower) in enumerate(grid)     # Implicit ordering of the states remains the same
+	Threads.@threads for (i, grid_lower) in collect(enumerate(grid))     # Implicit ordering of the states remains the same
 		state = LearningAbstractions.lower_to_SA(grid_lower, grid_spacing)
 		all_states_SA[i] = state
 		image, all_state_σ_bounds[i] = LearningAbstractions.GPBounding.bound_image([state[:,1], state[:,end-1]], gps, neg_gps) 
