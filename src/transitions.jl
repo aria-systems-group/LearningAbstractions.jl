@@ -9,22 +9,39 @@ function distance(X::Polytope, Y::Polytope)
     return distance(X_SA, Y_SA)
 end
 
+using EnhancedGJK
+import CoordinateTransformations: IdentityTransformation, Translation 
+
 function distance(X::SMatrix, Y::SMatrix)
     n = size(X,1)
     dir = @SVector(rand(n)) .- 0.5
     # TODO: Can this be made faster?
+
+    if n == 4
+        # This is a hacky way to get the distance
+        s1 = SVector{16}(eachcol(X))
+        s2 = SVector{16}(eachcol(Y))
+
+        cache = CollisionCache(s1, s2)
+        result = gjk!(cache, IdentityTransformation(), IdentityTransformation())
+        if result.in_collision
+            return 0.
+        else
+            return separation_distance(result)
+        end
+    end
     return minimum_distance(X, Y, dir, atol=1e-6)
 end
 
-function generate_all_transitions(grid, images, all_state_means, all_image_means, full_set; gp_rkhs_info=nothing, σ_bounds_all=nothing)
+function generate_all_transitions(grid, images, all_state_means, all_image_means, full_set; gp_rkhs_info=nothing, σ_bounds_all=nothing, ϵ_manual=nothing)
     num_states = length(grid) + 1 # All states plus the unsafe state!
     P̌ = spzeros(num_states, num_states)
     P̂ = spzeros(num_states, num_states) 
-    P̌[1:end-1, 1:end-1], P̂[1:end-1, 1:end-1] = generate_pairwise_transitions(grid, images, all_state_means, all_image_means, gp_rkhs_info=gp_rkhs_info, σ_bounds_all=σ_bounds_all) 
+    P̌[1:end-1, 1:end-1], P̂[1:end-1, 1:end-1] = generate_pairwise_transitions(grid, images, all_state_means, all_image_means, gp_rkhs_info=gp_rkhs_info, σ_bounds_all=σ_bounds_all, ϵ_manual=ϵ_manual) 
 
     for i in 1:num_states-1 
         σ_bounds = isnothing(gp_rkhs_info) ? nothing : σ_bounds_all[i]  
-        p̌, p̂ = transition_inverval(images[i], full_set, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds) 
+        p̌, p̂ = transition_inverval(images[i], full_set, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds, ϵ_manual=ϵ_manual) 
         P̌[i,end] = 1 - p̂
         P̂[i,end] = 1 - p̌ 
     end 
@@ -34,7 +51,7 @@ function generate_all_transitions(grid, images, all_state_means, all_image_means
     return P̌, P̂ 
 end
 
-function generate_pairwise_transitions(states, images, all_state_means, all_image_means; gp_rkhs_info=nothing, σ_bounds_all=nothing)
+function generate_pairwise_transitions(states, images, all_state_means, all_image_means; gp_rkhs_info=nothing, σ_bounds_all=nothing, ϵ_manual=nothing)
 
     num_states = length(states)
     P̌ = spzeros(num_states, num_states)
@@ -59,7 +76,7 @@ function generate_pairwise_transitions(states, images, all_state_means, all_imag
         for j in 1:num_states 
             statep_sa = states[j]
             if fast_check(mean_image, all_state_means[j], ϵ_crit, image_radius, state_radius) 
-                P̌[i,j], P̂[i,j] = transition_inverval(image, statep_sa, gp_rkhs_info=gp_rkhs_info, σ_bounds = σ_bounds) 
+                P̌[i,j], P̂[i,j] = transition_inverval(image, statep_sa, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds, ϵ_manual=ϵ_manual) 
             end
             next!(p)
         end
@@ -74,12 +91,12 @@ function fast_check(mean_pt, mean_target, ϵ_crit, image_radius, set_radius)
     return flag
 end
 
-function transition_inverval(X,Y; gp_rkhs_info=nothing, σ_bounds=nothing)
+function transition_inverval(X,Y; gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_manual=nothing)
     dis = distance(X, Y)
     #===
     Full or Partial Intersection
     ===#
-    if (dis <= 0.)
+    if (dis <= 1e-4)
         p̂ = 1.              # UB result for full + partial intersection
         containment_flag, min_distance = containment_check(X, Y)
         #===
