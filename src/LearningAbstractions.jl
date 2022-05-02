@@ -22,8 +22,8 @@ include("transitions.jl")
 include("imdptools.jl")
 include("plotting.jl")
 
-function find_state_images(grid, gps)
-	n_states = prod(grid.dims)
+function find_state_images(grid, gps, grid_spacing)
+	n_states = length(grid)
 	all_states_SA = Vector{SMatrix}(undef, n_states)
 	all_state_images = Vector{Any}(undef, n_states)
 	all_state_σ_bounds = Vector{Any}(undef, n_states) 
@@ -39,8 +39,10 @@ function find_state_images(grid, gps)
 		push!(neg_gps, neg_gp)
 	end
 
-	Threads.@threads for i=1:n_states      # Implicit ordering of the states remains the same
-		state = LearningAbstractions.polytope_to_SA(grid[i])
+	# ! This does not work with threading
+	# Threads.@threads
+	for (i, grid_lower) in enumerate(grid)     # Implicit ordering of the states remains the same
+		state = LearningAbstractions.lower_to_SA(grid_lower, grid_spacing)
 		all_states_SA[i] = state
 		image, all_state_σ_bounds[i] = LearningAbstractions.GPBounding.bound_image([state[:,1], state[:,end-1]], gps, neg_gps) 
 		all_state_images[i] = extent_to_SA(image)
