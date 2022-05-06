@@ -52,3 +52,36 @@ function condition_gps(input, output; se_params=[0., 0.65], optimize_hyperparame
     return gps
 end
 
+"""
+Select k-nearest datapoints
+"""
+function get_local_data_knn(center, x_data, y_data; num_neighbors = 50)
+    num_neighbors = minimum([num_neighbors, size(x_data,2)])
+    kdtree = KDTree(x_data);
+    sub_idx, _ = knn(kdtree, center, num_neighbors, true)
+
+    if typeof(sub_idx) == Array{Array{Int64,1},1}
+        sub_idx = sub_idx[1]
+    end
+
+    sub_x_data = x_data[:, sub_idx]
+    sub_y_data = y_data[sub_idx]
+    return sub_x_data, sub_y_data 
+end
+
+"""
+Create local GPs using k-nearest neighbors to select data.
+"""
+function create_local_gps(gps, center; num_neighbors=75, kernel_params=[0., 0.65])
+    new_gps = []
+    # TODO: Simplify this with the new GP function
+    for i=1:length(gps)
+        x_data = gps[i].x
+        y_data = gps[i].y
+        x_nn, y_nn = get_local_data_knn(center, x_data, y_data, num_neighbors=num_neighbors)
+        # TODO: Handle params in a better way
+        push!(new_gps, condition_gp_1dim(x_nn, y_nn; se_params=kernel_params))
+    end
+
+    return new_gps
+end
