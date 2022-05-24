@@ -39,10 +39,6 @@ function find_state_images(grid, gps, grid_spacing; local_gps_flag=false, local_
 		push!(neg_gps, neg_gp)
 	end
 
-	# 
-		# data_idxs = get_nearest_neighbors_idx(all_state_means, local_gps_data[1], local_gps_data[2], num_neighbors=local_gps_nns)
-	# end
-
 	if local_gps_flag
 		kdtree = KDTree(local_gps_data[1])
 	end
@@ -54,7 +50,6 @@ function find_state_images(grid, gps, grid_spacing; local_gps_flag=false, local_
 
 		if local_gps_flag
 			local_gps = create_local_gps(local_gps_data[1], local_gps_data[2], all_state_means[i], num_neighbors=local_gps_nns, kdtree=kdtree)
-			# local_gps = condition_gps(local_gps_data[1][:, data_idxs[i]],local_gps_data[2][:, data_idxs[i]])
 			local_neg_gps = []
 			for gp in local_gps
 				neg_gp = deepcopy(gp)
