@@ -35,16 +35,18 @@ end
 
 Condition one Gaussian processe for each component of the output data.
 """
-function condition_gps(input, output; se_params=[0., 0.65], optimize_hyperparameters=false, lnoise=nothing, opt_fraction=1.0)
+function condition_gps(input, output; se_params=[0., 0.65], optimize_hyperparameters=false, lnoise=nothing, opt_fraction=1.0, data_subset=0)
     # gp_set = Dict()
     ndims = size(input,1)
     gps = []
+    subset_idx = data_subset > 0 ? rand(1:size(input,2), data_subset) : 1:size(input,2)
     # dim_keys = ["x$i" for i=1:size(input,1)]
     for i=1:ndims 
         # Handle data dependency here
         # x_train_sub = x_train[:, findall(.>(0), data_deps[out_dim])[:]]
-        x_train_sub = input
-        gp = condition_gp_1dim(input, output[i,:]; se_params=se_params, optimize_hyperparameters=optimize_hyperparameters, lnoise=lnoise, opt_fraction=opt_fraction)
+        x_train_sub = input[:, subset_idx]
+        y_train_sub = output[i, subset_idx]
+        gp = condition_gp_1dim(x_train_sub, y_train_sub, se_params=se_params, optimize_hyperparameters=optimize_hyperparameters, lnoise=lnoise, opt_fraction=opt_fraction)
         
         # gp_set["x$i"] = deepcopy(gp)
         push!(gps, gp)
@@ -55,10 +57,14 @@ end
 """
 Select k-nearest datapoints
 """
-function get_local_data_knn(center, x_data, y_data; num_neighbors = 50)
+function get_local_data_knn(center, x_data, y_data; num_neighbors = 50, kdtree=nothing)
     num_neighbors = minimum([num_neighbors, size(x_data,2)])
-    kdtree = KDTree(x_data);
-    sub_idx, _ = knn(kdtree, center, num_neighbors, true)
+
+    if isnothing(kdtree)
+        kdtree = KDTree(x_data);
+    end
+
+    sub_idx, _ = knn(kdtree, center, num_neighbors, false)
 
     if typeof(sub_idx) == Array{Array{Int64,1},1}
         sub_idx = sub_idx[1]
@@ -72,13 +78,11 @@ end
 """
 Create local GPs using k-nearest neighbors to select data.
 """
-function create_local_gps(gps, center; num_neighbors=75, kernel_params=[0., 0.65])
+function create_local_gps(input, output, center; num_neighbors=75, kernel_params=[0., 0.65], kdtree=kdtree)
     new_gps = []
     # TODO: Simplify this with the new GP function
-    for i=1:length(gps)
-        x_data = gps[i].x
-        y_data = gps[i].y
-        x_nn, y_nn = get_local_data_knn(center, x_data, y_data, num_neighbors=num_neighbors)
+    for i=1:size(input, 1)
+        x_nn, y_nn = get_local_data_knn(center, input, output[i,:], num_neighbors=num_neighbors, kdtree=kdtree)
         # TODO: Handle params in a better way
         push!(new_gps, condition_gp_1dim(x_nn, y_nn; se_params=kernel_params))
     end

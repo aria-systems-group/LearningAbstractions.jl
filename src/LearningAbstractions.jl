@@ -22,7 +22,7 @@ include("transitions.jl")
 include("imdptools.jl")
 include("plotting.jl")
 
-function find_state_images(grid, gps, grid_spacing; local_gps_flag=false)
+function find_state_images(grid, gps, grid_spacing; local_gps_flag=false, local_gps_nns=200, local_gps_data=nothing)
 	n_states = length(grid)
 	all_states_SA = Vector{SMatrix}(undef, n_states)
 	all_state_images = Vector{Any}(undef, n_states)
@@ -39,13 +39,22 @@ function find_state_images(grid, gps, grid_spacing; local_gps_flag=false)
 		push!(neg_gps, neg_gp)
 	end
 
+	# 
+		# data_idxs = get_nearest_neighbors_idx(all_state_means, local_gps_data[1], local_gps_data[2], num_neighbors=local_gps_nns)
+	# end
+
+	if local_gps_flag
+		kdtree = KDTree(local_gps_data[1])
+	end
+
 	Threads.@threads for (i, grid_lower) in collect(enumerate(grid))     # Implicit ordering of the states remains the same
 		state = LearningAbstractions.lower_to_SA(grid_lower, grid_spacing)
 		all_states_SA[i] = state
 		all_state_means[i] = (state[:,1] + state[:,end-1])/2
 
 		if local_gps_flag
-			local_gps = create_local_gps(gps, all_state_means[i], num_neighbors=200)
+			local_gps = create_local_gps(local_gps_data[1], local_gps_data[2], all_state_means[i], num_neighbors=local_gps_nns, kdtree=kdtree)
+			# local_gps = condition_gps(local_gps_data[1][:, data_idxs[i]],local_gps_data[2][:, data_idxs[i]])
 			local_neg_gps = []
 			for gp in local_gps
 				neg_gp = deepcopy(gp)
