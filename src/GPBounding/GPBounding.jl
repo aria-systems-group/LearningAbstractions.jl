@@ -238,12 +238,12 @@ function compute_σ_ub_bounds_approx(gp, x_L, x_U)
     # Get N samples uniformly dist.
     x_samp = zeros(length(x_L),1)
     # @info x_samp
+    # TODO: Do this in one sample and take the maximum? 
     for i=1:N
         # x_samp = vcat([rand(mt, Uniform(x_L[1], x_U[1]), 1, 1)[1], rand(mt, Uniform(x_L[2], x_U[1]), 1, 1)[1]])
         x_samp = rand(mt, Uniform(x_L[1], x_U[1]), length(x_L), 1) 
         # x_samp[1] = rand(mt, Uniform(x_L[1], x_U[1]), 1, 1)[1]
         # x_samp[2] = rand(mt, Uniform(x_L[2], x_U[2]), 1, 1)[1]
-        # @info x_samp
         _, σ2 = predict_f(gp, x_samp)
         if σ2[1] > σ2_best
             σ2_best = σ2[1] 

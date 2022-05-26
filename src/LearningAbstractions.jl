@@ -1,5 +1,9 @@
 module LearningAbstractions
 
+using TOML
+using BSON
+using ProgressMeter
+
 using GaussianProcesses
 using NearestNeighbors
 using StatsBase
@@ -11,9 +15,6 @@ using SparseArrays
 using StaticArrays
 using ConvexBodyProximityQueries
 
-using ProgressMeter
-
-# Write your package code here.
 include("gpwrapper.jl")
 include("GPBounding/GPBounding.jl")
 include("rkhs.jl")
@@ -21,6 +22,44 @@ include("discretization.jl")
 include("transitions.jl")
 include("imdptools.jl")
 include("plotting.jl")
+
+function learn_abstraction(config_file::String)
+	f = open(config_file)
+	config = TOML.parse(f)
+	close(f)
+	
+	L = SA_F64[config["workspace"]["lower"]...]
+	U = SA_F64[config["workspace"]["upper"]...]
+	X_extent = [[l u] for (l, u) in zip(L,U)]
+	diameter_domain = sqrt(sum((L-U).^2))
+	grid_spacing = SA_F64[config["discretization"]["grid_spacing"]...]
+	grid = LearningAbstractions.grid_generator(L, U, grid_spacing)
+	
+	lipschitz_bound = config["system"]["lipschitz_bound"] 
+	# TODO: Get this from the dataset
+	σ_noise = config["system"]["measurement_noise_sigma"]
+
+	data_filename = config["system"]["datafile"]
+	res = BSON.load(data_filename)
+	data_dict = res[:dataset_dict]
+	input_data = data_dict[:input]
+	output_data = data_dict[:output]
+
+	gps = LearningAbstractions.condition_gps(input_data, output_data)
+	diameter_domain = sqrt(sum((L-U).^2))
+	sup_f = maximum(U) + lipschitz_bound*diameter_domain
+	gp_info = LearningAbstractions.create_gp_info(gps, σ_noise, diameter_domain, sup_f)
+
+	all_states_SA, 
+	all_state_images, 
+	all_state_σ_bounds, 
+	all_state_means, 
+	all_image_means = LearningAbstractions.find_state_images(grid, gps, grid_spacing)
+	P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, all_state_means, all_image_means, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_state_σ_bounds)
+
+	# TODO: Save everything here
+	return P̌, P̂, all_states_SA, all_state_means
+end
 
 function find_state_images(grid, gps, grid_spacing; local_gps_flag=false, local_gps_nns=200, local_gps_data=nothing)
 	n_states = length(grid)
