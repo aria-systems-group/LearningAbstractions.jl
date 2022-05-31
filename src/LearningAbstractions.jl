@@ -15,6 +15,7 @@ using SparseArrays
 using StaticArrays
 using ConvexBodyProximityQueries
 
+include("data.jl")
 include("gpwrapper.jl")
 include("GPBounding/GPBounding.jl")
 include("rkhs.jl")
