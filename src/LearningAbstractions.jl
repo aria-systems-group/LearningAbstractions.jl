@@ -57,8 +57,23 @@ function learn_abstraction(config_file::String)
 	all_image_means = LearningAbstractions.find_state_images(grid, gps, grid_spacing)
 	P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, all_state_means, all_image_means, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_state_σ_bounds)
 
-	# TODO: Save everything here
-	return P̌, P̂, all_states_SA, all_state_means
+	if config["save_results"]
+		results_dir = config["results_directory"]
+		@info "Saving abstraction info to $results_dir"
+		mkpath(results_dir)
+		state_filename = "$results_dir/states.bson"
+		imdp_filename = "$results_dir/imdp.bson"
+
+		bson(state_filename, Dict(:states => all_states_SA,
+                              :images => all_state_images,
+                              :bounds => all_state_σ_bounds,
+                              :state_means => all_state_means,
+                              :image_means => all_image_means)
+		)
+		bson(imdp_filename, Dict(:Pcheck => P̌, :Phat => P̂))
+	end
+
+	return P̌, P̂, all_states_SA, all_state_means, results_dir
 end
 
 function find_state_images(grid, gps, grid_spacing; local_gps_flag=false, local_gps_nns=200, local_gps_data=nothing)
