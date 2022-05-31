@@ -44,7 +44,7 @@ function load_PCTL_specification(spec_filename::String)
     default_label = spec_data["default"]
     unsafe_label = spec_data["unsafe"]
 
-    labels_dict = Dict(ϕ1 => [], ϕ2 => [])
+    labels_dict = Dict(ϕ1 => [], ϕ2 => [], unsafe_label => [])
     dims = spec_data["dims"]
     for geometry in spec_data["labels"]["phi1"]
         push!(labels_dict[ϕ1], Box(Point(geometry[1:dims]), Point(geometry[dims+1:end])))
@@ -52,6 +52,10 @@ function load_PCTL_specification(spec_filename::String)
 
     for geometry in spec_data["labels"]["phi2"]
         push!(labels_dict[ϕ2], Box(Point(geometry[1:dims]), Point(geometry[dims+1:end])))
+    end
+
+    for geometry in spec_data["labels"]["unsafe"]
+        push!(labels_dict[unsafe_label], Box(Point(geometry[1:dims]), Point(geometry[dims+1:end])))
     end
 
     lbl_fcn = (point; unsafe=false) -> general_label_fcn(point, default_label, unsafe_label, labels_dict, unsafe=unsafe)

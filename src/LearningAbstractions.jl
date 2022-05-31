@@ -45,32 +45,71 @@ function learn_abstraction(config_file::String)
 	input_data = data_dict[:input]
 	output_data = data_dict[:output]
 
-	gps = LearningAbstractions.condition_gps(input_data, output_data)
-	diameter_domain = sqrt(sum((L-U).^2))
-	sup_f = maximum(U) + lipschitz_bound*diameter_domain
-	gp_info = LearningAbstractions.create_gp_info(gps, σ_noise, diameter_domain, sup_f)
+	results_dir = config["results_directory"]
+	state_filename = "$results_dir/states.bson"
+	imdp_filename = "$results_dir/imdp.bson"
+	reloaded_states_flag = false
+	reloaded_results_flag = false
+	
+	if config["reuse_results"] && isfile(imdp_filename)
+		@info "Reloading all state information and IMDP transitions from $results_dir"
+		state_dict = BSON.load(state_filename)
+		all_states_SA = state_dict[:states]
+		all_state_images = state_dict[:images]
+		all_state_σ_bounds = state_dict[:bounds]
+		all_state_means = state_dict[:state_means]
+		all_image_means = state_dict[:image_means]
+		
+		imdp_dict = BSON.load(imdp_filename)
+		P̌ = imdp_dict[:Pcheck]
+		P̂ = imdp_dict[:Phat]
+		reloaded_results_flag = true
+	elseif config["reuse_states"] && isfile(state_filename)
+		@info "Reloading state and image definitions from $state_filename"
+		state_dict = BSON.load(state_filename)
+		all_states_SA = state_dict[:states]
+		all_state_images = state_dict[:images]
+		all_state_σ_bounds = state_dict[:bounds]
+		all_state_means = state_dict[:state_means]
+		all_image_means = state_dict[:image_means]
+		reloaded_states_flag = true
 
-	all_states_SA, 
-	all_state_images, 
-	all_state_σ_bounds, 
-	all_state_means, 
-	all_image_means = LearningAbstractions.find_state_images(grid, gps, grid_spacing)
-	P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, all_state_means, all_image_means, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_state_σ_bounds)
+		gps = LearningAbstractions.condition_gps(input_data, output_data)
+		diameter_domain = sqrt(sum((L-U).^2))
+		sup_f = maximum(U) + lipschitz_bound*diameter_domain
+		gp_info = LearningAbstractions.create_gp_info(gps, σ_noise, diameter_domain, sup_f)
 
-	if config["save_results"]
-		results_dir = config["results_directory"]
+		P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, all_state_means, all_image_means, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_state_σ_bounds)
+	else
+		gps = LearningAbstractions.condition_gps(input_data, output_data)
+		diameter_domain = sqrt(sum((L-U).^2))
+		sup_f = maximum(U) + lipschitz_bound*diameter_domain
+		gp_info = LearningAbstractions.create_gp_info(gps, σ_noise, diameter_domain, sup_f)
+
+		all_states_SA, 
+		all_state_images, 
+		all_state_σ_bounds, 
+		all_state_means, 
+		all_image_means = LearningAbstractions.find_state_images(grid, gps, grid_spacing)
+		P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, all_state_means, all_image_means, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_state_σ_bounds)
+	end
+	
+	if config["save_results"] && !reloaded_results_flag
 		@info "Saving abstraction info to $results_dir"
 		mkpath(results_dir)
-		state_filename = "$results_dir/states.bson"
-		imdp_filename = "$results_dir/imdp.bson"
 
-		bson(state_filename, Dict(:states => all_states_SA,
-                              :images => all_state_images,
-                              :bounds => all_state_σ_bounds,
-                              :state_means => all_state_means,
-                              :image_means => all_image_means)
-		)
-		bson(imdp_filename, Dict(:Pcheck => P̌, :Phat => P̂))
+		if !reloaded_states_flag && !reloaded_results_flag
+			bson(state_filename, Dict(:states => all_states_SA,
+								:images => all_state_images,
+								:bounds => all_state_σ_bounds,
+								:state_means => all_state_means,
+								:image_means => all_image_means)
+			)
+		end
+
+		if !reloaded_results_flag
+			bson(imdp_filename, Dict(:Pcheck => P̌, :Phat => P̂))
+		end
 	end
 
 	return P̌, P̂, all_states_SA, all_state_means, results_dir
