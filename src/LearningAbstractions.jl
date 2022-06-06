@@ -49,6 +49,7 @@ function learn_abstraction(config_file::String)
 	results_dir = config["results_directory"]
 	state_filename = "$results_dir/states.bson"
 	imdp_filename = "$results_dir/imdp.bson"
+	gps_filename = "$results_dir/gps.bson"
 	reloaded_states_flag = false
 	reloaded_results_flag = false
 	
@@ -76,6 +77,7 @@ function learn_abstraction(config_file::String)
 		reloaded_states_flag = true
 
 		gps = LearningAbstractions.condition_gps(input_data, output_data)
+		bson(gps_filename, Dict(:gps => gps))
 		diameter_domain = sqrt(sum((L-U).^2))
 		sup_f = maximum(U) + lipschitz_bound*diameter_domain
 		gp_info = LearningAbstractions.create_gp_info(gps, σ_noise, diameter_domain, sup_f)
@@ -83,6 +85,7 @@ function learn_abstraction(config_file::String)
 		P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, all_state_means, all_image_means, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_state_σ_bounds)
 	else
 		gps = LearningAbstractions.condition_gps(input_data, output_data)
+		bson(gps_filename, Dict(:gps => gps))
 		diameter_domain = sqrt(sum((L-U).^2))
 		sup_f = maximum(U) + lipschitz_bound*diameter_domain
 		gp_info = LearningAbstractions.create_gp_info(gps, σ_noise, diameter_domain, sup_f)

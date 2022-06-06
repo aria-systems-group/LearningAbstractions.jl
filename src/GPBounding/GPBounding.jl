@@ -231,24 +231,13 @@ function compute_σ_ub_bounds(gp, K_inv, x_L, x_U; max_iterations=10, bound_epsi
     
 end
 
-function compute_σ_ub_bounds_approx(gp, x_L, x_U)
-    N = 100
+function compute_σ_ub_bounds_approx(gp, x_L, x_U; N=100)
     mt = MersenneTwister(11)
     σ2_best = -Inf
     # Get N samples uniformly dist.
-    x_samp = zeros(length(x_L),1)
-    # @info x_samp
-    # TODO: Do this in one sample and take the maximum? 
-    for i=1:N
-        # x_samp = vcat([rand(mt, Uniform(x_L[1], x_U[1]), 1, 1)[1], rand(mt, Uniform(x_L[2], x_U[1]), 1, 1)[1]])
-        x_samp = rand(mt, Uniform(x_L[1], x_U[1]), length(x_L), 1) 
-        # x_samp[1] = rand(mt, Uniform(x_L[1], x_U[1]), 1, 1)[1]
-        # x_samp[2] = rand(mt, Uniform(x_L[2], x_U[2]), 1, 1)[1]
-        _, σ2 = predict_f(gp, x_samp)
-        if σ2[1] > σ2_best
-            σ2_best = σ2[1] 
-        end
-    end
+    x_samp = vcat([rand(mt, Uniform(x_L[i], x_U[i]), 1, N) for i=1:length(x_L)]...)
+    _, σ2 = predict_f(gp, x_samp)
+    σ2_best = maximum(σ2)
     return 0., 0., sqrt(σ2_best[1])
 end
 
