@@ -8,9 +8,8 @@ Create a grid generator from lower and upper point extremeties with spacing in d
 function grid_generator(L, U, δ)
 	generator = nothing
 	dim_generators = []
-    f = 0.99                    # This prevents too many points from entering the generator
 	for i=1:length(L)
-		push!(dim_generators, L[i]:δ[i]:U[i]*f)
+		push!(dim_generators, (L[i]:δ[i]:U[i])[1:end-1])
 	end
 
 	generator = Iterators.product(dim_generators...)
