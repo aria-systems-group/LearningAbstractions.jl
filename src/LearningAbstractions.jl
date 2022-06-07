@@ -20,6 +20,7 @@ include("gpwrapper.jl")
 include("GPBounding/GPBounding.jl")
 include("rkhs.jl")
 include("discretization.jl")
+include("refinement.jl")
 include("transitions.jl")
 include("imdptools.jl")
 include("plotting.jl")
@@ -52,7 +53,15 @@ function learn_abstraction(config_file::String)
 	gps_filename = "$results_dir/gps.bson"
 	reloaded_states_flag = false
 	reloaded_results_flag = false
-	
+
+	# Local GP setup
+	local_gps_flag = config["local"]["use_local_gps"]
+	local_neighbors = config["local"]["local_gp_neighbors"]
+	full_gp_subset = config["local"]["full_gp_subset"]
+	if local_gps_flag
+		@info "Performing local GP regression with $local_neighbors-nearest neighbors"
+	end
+
 	if config["reuse_results"] && isfile(imdp_filename)
 		@info "Reloading all state information and IMDP transitions from $results_dir"
 		state_dict = BSON.load(state_filename)
@@ -76,25 +85,26 @@ function learn_abstraction(config_file::String)
 		all_image_means = state_dict[:image_means]
 		reloaded_states_flag = true
 
-		gps = LearningAbstractions.condition_gps(input_data, output_data)
-		bson(gps_filename, Dict(:gps => gps))
+		# TODO: using subset of data to get RKHS-related constants is inelegant
+		gps = LearningAbstractions.condition_gps(input_data, output_data, data_subset=full_gp_subset)
 		diameter_domain = sqrt(sum((L-U).^2))
 		sup_f = maximum(U) + lipschitz_bound*diameter_domain
 		gp_info = LearningAbstractions.create_gp_info(gps, σ_noise, diameter_domain, sup_f)
-
+		bson(gps_filename, Dict(:gps => gps, :info => gp_info))
 		P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, all_state_means, all_image_means, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_state_σ_bounds)
 	else
-		gps = LearningAbstractions.condition_gps(input_data, output_data)
-		bson(gps_filename, Dict(:gps => gps))
+		# TODO: using subset of data to get RKHS-related constants is inelegant
+		gps = LearningAbstractions.condition_gps(input_data, output_data, data_subset=full_gp_subset)
 		diameter_domain = sqrt(sum((L-U).^2))
 		sup_f = maximum(U) + lipschitz_bound*diameter_domain
 		gp_info = LearningAbstractions.create_gp_info(gps, σ_noise, diameter_domain, sup_f)
+		bson(gps_filename, Dict(:gps => gps, :info => gp_info))
 
 		all_states_SA, 
 		all_state_images, 
 		all_state_σ_bounds, 
 		all_state_means, 
-		all_image_means = LearningAbstractions.find_state_images(grid, gps, grid_spacing)
+		all_image_means = LearningAbstractions.find_state_images(grid, gps, grid_spacing, local_gps_flag=local_gps_flag, local_gps_nns=local_neighbors, local_gps_data=(input_data, output_data))
 		P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, all_state_means, all_image_means, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_state_σ_bounds)
 	end
 	
@@ -116,7 +126,7 @@ function learn_abstraction(config_file::String)
 		end
 	end
 
-	return P̌, P̂, all_states_SA, all_state_means, results_dir
+	return P̌, P̂, all_states_SA, all_state_means, results_dir, all_state_images, all_state_σ_bounds
 end
 
 function find_state_images(grid, gps, grid_spacing; local_gps_flag=false, local_gps_nns=200, local_gps_data=nothing)
