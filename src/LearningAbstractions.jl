@@ -2,6 +2,7 @@ module LearningAbstractions
 
 using TOML
 using BSON
+using Serialization
 using ProgressMeter
 
 using GaussianProcesses
@@ -90,7 +91,7 @@ function learn_abstraction(config_file::String)
 		diameter_domain = sqrt(sum((L-U).^2))
 		sup_f = maximum(U) + lipschitz_bound*diameter_domain
 		gp_info = LearningAbstractions.create_gp_info(gps, σ_noise, diameter_domain, sup_f)
-		bson(gps_filename, Dict(:gps => gps, :info => gp_info))
+		save_gps(Dict(:gps => gps, :info => gp_info), gps_filename)
 		P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, all_state_means, all_image_means, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_state_σ_bounds)
 	else
 		# TODO: using subset of data to get RKHS-related constants is inelegant
@@ -98,7 +99,7 @@ function learn_abstraction(config_file::String)
 		diameter_domain = sqrt(sum((L-U).^2))
 		sup_f = maximum(U) + lipschitz_bound*diameter_domain
 		gp_info = LearningAbstractions.create_gp_info(gps, σ_noise, diameter_domain, sup_f)
-		bson(gps_filename, Dict(:gps => gps, :info => gp_info))
+		save_gps(Dict(:gps => gps, :info => gp_info), gps_filename)
 
 		all_states_SA, 
 		all_state_images, 

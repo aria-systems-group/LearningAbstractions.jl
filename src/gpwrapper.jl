@@ -89,3 +89,28 @@ function create_local_gps(input, output, center; num_neighbors=75, kernel_params
 
     return new_gps
 end
+
+"""
+    save_gps
+
+Save GPs with serialization.
+"""
+function save_gps(gps_dict, filename)
+    # Save the GPs for further analysis. 
+    @info "Saving GP regressions to experiment directory..."
+    open(filename, "w") do f
+        serialize(f, gps_dict)
+    end
+end
+
+"""
+    load_gps
+
+Load GPs from file.
+"""
+function load_gps(filename)
+    f = open(filename, "r")
+    gps_dict = deserialize(f)
+    close(f)
+    return gps_dict[:gps], gps_dict[:info]
+end
