@@ -138,7 +138,7 @@ function find_state_images(grid, gps, grid_spacing; local_gps_flag=false, local_
 	all_state_means = Vector{SVector}(undef, n_states) 
 	all_image_means = Vector{Any}(undef, n_states) 
 
-	p = Progress(n_states, desc="Computing image bounds...", dt=0.01)
+	p = Progress(n_states, desc="Computing image bounds...", dt=10.0)
 
 	neg_gps = []
 	for gp in gps

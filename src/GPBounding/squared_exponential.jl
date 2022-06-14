@@ -52,7 +52,6 @@ end
 function split_region(x_L, x_U)
 
     n = length(x_L)
-    # TODO: Does not work in general
     x_avg = (x_L + x_U)/2
     # if n == 1
     #     return [(x_L, x_avg), (x_avg, x_U)]
@@ -83,8 +82,6 @@ function split_region(x_L, x_U)
     # upper_ranges = collect(Base.product(uppers...))
 
     return [[[lower...], [upper...]] for (lower, upper) in zip(Base.product(lowers...), Base.product(uppers...))]
-
-   @error "How did you get here!" 
 end
 
 # Don't know if this will even help!
@@ -117,7 +114,6 @@ end
 
 "Computes the upper bound of the posterior covariance function of a Gaussian process in an interval."
 function compute_σ_upper_bound(gp, x_L, x_U, R_inv)
-    # TODO: Verify what R inverse is.
 #     σ_noise = exp(gp.logNoise.value)
 #     R_inv = [σ_noise^2 0, 0 σ_noise^2] # TODO: Generalize to any dimension
     # global variables: training_data, theta_vec_train_squared
