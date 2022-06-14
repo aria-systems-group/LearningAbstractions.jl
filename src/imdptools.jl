@@ -39,7 +39,7 @@ function load_PCTL_specification(spec_filename::String)
     spec_data = TOML.parse(f)
     close(f)
 
-    ϕ1 = spec_data["phi1"]
+    ϕ1 = spec_data["phi1"] == false ? nothing : spec_data["phi1"] 
     ϕ2 = spec_data["phi2"]
     default_label = spec_data["default"]
     unsafe_label = spec_data["unsafe"]
