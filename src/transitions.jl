@@ -62,7 +62,7 @@ function generate_pairwise_transitions(states, images, all_state_means, all_imag
     state_radius = norm(states[1][:,1] - states[1][:,end-1])/2
     fast_checks = 0
 
-    p = Progress(num_states^2, desc="Computing transition intervals...", dt=10.0)
+    p = Progress(num_states^2, desc="Computing transition intervals...", dt=30)
 
     for i in 1:num_states 
         image = images[i]

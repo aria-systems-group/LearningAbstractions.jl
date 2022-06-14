@@ -97,7 +97,7 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
         end
 
         # Generate new posterior bounds
-        p = Progress(length(new_states_list), desc="Computing image bounds...", dt=0.01)
+        p = Progress(length(new_states_list), desc="Computing image bounds...", dt=30)
         Threads.@threads for new_state in new_states_list 
 
             # If local GP, create local GP here
