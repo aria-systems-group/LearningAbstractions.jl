@@ -49,6 +49,7 @@ function learn_abstraction(config_file::String)
 	output_data = data_dict[:output]
 
 	results_dir = config["results_directory"]
+	mkpath(results_dir)
 	state_filename = "$results_dir/states.bson"
 	imdp_filename = "$results_dir/imdp.bson"
 	gps_filename = "$results_dir/gps.bson"
