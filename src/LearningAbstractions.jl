@@ -21,6 +21,7 @@ include("gpwrapper.jl")
 include("GPBounding/GPBounding.jl")
 include("rkhs.jl")
 include("discretization.jl")
+include("images.jl")
 include("refinement.jl")
 include("transitions.jl")
 include("imdptools.jl")
@@ -58,7 +59,7 @@ function learn_abstraction(config_file::String)
 
 	# Local GP setup
 	local_gps_flag = config["local"]["use_local_gps"]
-	local_neighbors = config["local"]["local_gp_neighbors"]
+	local_gps_nns = config["local"]["local_gp_neighbors"]
 	full_gp_subset = config["local"]["full_gp_subset"]
 	if local_gps_flag
 		@info "Performing local GP regression with $local_neighbors-nearest neighbors"
@@ -70,8 +71,6 @@ function learn_abstraction(config_file::String)
 		all_states_SA = state_dict[:states]
 		all_state_images = state_dict[:images]
 		all_state_σ_bounds = state_dict[:bounds]
-		all_state_means = state_dict[:state_means]
-		all_image_means = state_dict[:image_means]
 		
 		imdp_dict = BSON.load(imdp_filename)
 		P̌ = imdp_dict[:Pcheck]
@@ -83,8 +82,6 @@ function learn_abstraction(config_file::String)
 		all_states_SA = state_dict[:states]
 		all_state_images = state_dict[:images]
 		all_state_σ_bounds = state_dict[:bounds]
-		all_state_means = state_dict[:state_means]
-		all_image_means = state_dict[:image_means]
 		reloaded_states_flag = true
 
 		# TODO: using subset of data to get RKHS-related constants is inelegant
@@ -93,7 +90,7 @@ function learn_abstraction(config_file::String)
 		sup_f = maximum(U) + lipschitz_bound*diameter_domain
 		gp_info = LearningAbstractions.create_gp_info(gps, σ_noise, diameter_domain, sup_f)
 		save_gps(Dict(:gps => gps, :info => gp_info), gps_filename)
-		P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, all_state_means, all_image_means, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_state_σ_bounds)
+		P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_state_σ_bounds)
 	else
 		# TODO: using subset of data to get RKHS-related constants is inelegant
 		gps = LearningAbstractions.condition_gps(input_data, output_data, data_subset=full_gp_subset)
@@ -102,12 +99,12 @@ function learn_abstraction(config_file::String)
 		gp_info = LearningAbstractions.create_gp_info(gps, σ_noise, diameter_domain, sup_f)
 		save_gps(Dict(:gps => gps, :info => gp_info), gps_filename)
 
-		all_states_SA, 
-		all_state_images, 
-		all_state_σ_bounds, 
-		all_state_means, 
-		all_image_means = LearningAbstractions.find_state_images(grid, gps, grid_spacing, local_gps_flag=local_gps_flag, local_gps_nns=local_neighbors, local_gps_data=(input_data, output_data))
-		P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, all_state_means, all_image_means, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_state_σ_bounds)
+		n_states = length(grid)
+		all_states_SA = Vector{SMatrix}(undef, n_states)
+		[all_states_SA[i] = LearningAbstractions.lower_to_SA(grid_lower, grid_spacing) for (i,grid_lower) in enumerate(grid)]
+		all_state_images, all_state_σ_bounds = calculate_state_bounds(all_states_SA, gps; local_gps_flag=local_gps_flag, local_gps_data=(input_data, output_data), local_gps_nns=local_gps_nns)
+
+		P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_state_σ_bounds)
 	end
 	
 	if config["save_results"] && !reloaded_results_flag
@@ -118,8 +115,7 @@ function learn_abstraction(config_file::String)
 			bson(state_filename, Dict(:states => all_states_SA,
 								:images => all_state_images,
 								:bounds => all_state_σ_bounds,
-								:state_means => all_state_means,
-								:image_means => all_image_means)
+								)
 			)
 		end
 
@@ -128,54 +124,7 @@ function learn_abstraction(config_file::String)
 		end
 	end
 
-	return P̌, P̂, all_states_SA, all_state_means, results_dir, all_state_images, all_state_σ_bounds
-end
-
-function find_state_images(grid, gps, grid_spacing; local_gps_flag=false, local_gps_nns=200, local_gps_data=nothing)
-	n_states = length(grid)
-	all_states_SA = Vector{SMatrix}(undef, n_states)
-	all_state_images = Vector{Any}(undef, n_states)
-	all_state_σ_bounds = Vector{Any}(undef, n_states) 
-	all_state_means = Vector{SVector}(undef, n_states) 
-	all_image_means = Vector{Any}(undef, n_states) 
-
-	p = Progress(n_states, desc="Computing image bounds...", dt=30)
-
-	neg_gps = []
-	for gp in gps
-		neg_gp = deepcopy(gp)
-		neg_gp.alpha *= -1
-		push!(neg_gps, neg_gp)
-	end
-
-	if local_gps_flag
-		kdtree = KDTree(local_gps_data[1])
-	end
-
-	Threads.@threads for (i, grid_lower) in collect(enumerate(grid))     # Implicit ordering of the states remains the same
-		state = LearningAbstractions.lower_to_SA(grid_lower, grid_spacing)
-		all_states_SA[i] = state
-		all_state_means[i] = (state[:,1] + state[:,end-1])/2
-
-		if local_gps_flag
-			local_gps = create_local_gps(local_gps_data[1], local_gps_data[2], all_state_means[i], num_neighbors=local_gps_nns, kdtree=kdtree)
-			local_neg_gps = []
-			for gp in local_gps
-				neg_gp = deepcopy(gp)
-				neg_gp.alpha *= -1
-				push!(local_neg_gps, neg_gp)
-			end
-			image, all_state_σ_bounds[i] = LearningAbstractions.GPBounding.bound_image([state[:,1], state[:,end-1]], local_gps, local_neg_gps) 
-		else
-			image, all_state_σ_bounds[i] = LearningAbstractions.GPBounding.bound_image([state[:,1], state[:,end-1]], gps, neg_gps) 
-		end
-
-		all_state_images[i] = extent_to_SA(image)
-		all_image_means[i] = (all_state_images[i][:,1] + all_state_images[i][:,end-1])/2
-		next!(p)
-	end
-
-	return all_states_SA, all_state_images, all_state_σ_bounds, all_state_means, all_image_means 
+	return P̌, P̂, all_states_SA, results_dir, all_state_images, all_state_σ_bounds
 end
 
 end

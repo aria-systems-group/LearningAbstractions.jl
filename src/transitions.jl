@@ -33,11 +33,11 @@ function distance(X::SMatrix, Y::SMatrix)
     return minimum_distance(X, Y, dir, atol=1e-6)
 end
 
-function generate_all_transitions(grid, images, all_state_means, all_image_means, full_set; gp_rkhs_info=nothing, σ_bounds_all=nothing, ϵ_manual=nothing)
+function generate_all_transitions(grid, images, full_set; gp_rkhs_info=nothing, σ_bounds_all=nothing, ϵ_manual=nothing)
     num_states = length(grid) + 1 # All states plus the unsafe state!
     P̌ = spzeros(num_states, num_states)
     P̂ = spzeros(num_states, num_states) 
-    P̌[1:end-1, 1:end-1], P̂[1:end-1, 1:end-1] = generate_pairwise_transitions(grid, images, all_state_means, all_image_means, gp_rkhs_info=gp_rkhs_info, σ_bounds_all=σ_bounds_all, ϵ_manual=ϵ_manual) 
+    P̌[1:end-1, 1:end-1], P̂[1:end-1, 1:end-1] = generate_pairwise_transitions(grid, images, gp_rkhs_info=gp_rkhs_info, σ_bounds_all=σ_bounds_all, ϵ_manual=ϵ_manual) 
     @info "Finished generating pairwise transitions."
     for i in 1:num_states-1 
         σ_bounds = isnothing(gp_rkhs_info) ? nothing : σ_bounds_all[i]  
@@ -52,11 +52,15 @@ function generate_all_transitions(grid, images, all_state_means, all_image_means
     return P̌, P̂ 
 end
 
-function generate_pairwise_transitions(states, images, all_state_means, all_image_means; gp_rkhs_info=nothing, σ_bounds_all=nothing, ϵ_manual=nothing)
+function generate_pairwise_transitions(states, images; gp_rkhs_info=nothing, σ_bounds_all=nothing, ϵ_manual=nothing)
 
     num_states = length(states)
     P̌ = spzeros(num_states, num_states)
     P̂ = spzeros(num_states, num_states) 
+
+    # calculate state and image means for fast check
+    all_state_means = state_means(states)
+    all_image_means = state_means(images)
 
     # TODO: Replace this when grid is replaced
     state_radius = norm(states[1][:,1] - states[1][:,end-1])/2

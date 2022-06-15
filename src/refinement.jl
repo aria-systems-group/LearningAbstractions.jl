@@ -20,6 +20,11 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
     f = open(config_filename)
 	config = TOML.parse(f)
 	close(f)
+
+    num_states = length(all_states_SA)
+    num_refine_states = length(states_to_refine)
+    frac = length(states_to_refine)/num_states
+    @info "Refining $num_refine_states of $num_states ($frac) states"
 	
     results_dir = config["results_directory"]
 	# state_filename = "$results_dir/states.bson"
@@ -32,19 +37,19 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
 	imdp_refined_filename = "$refinement_dir/imdp.bson"
 
     if config["reuse_results"] && isfile(state_refined_filename) && isfile(imdp_refined_filename)
+        # TODO: Function for reloading 
         @info "Reloading all state information and IMDP transitions from $results_dir"
 		state_dict = BSON.load(state_refined_filename)
 
 		all_states_refined = state_dict[:states]
 		all_state_images_refined = state_dict[:images]
 		all_σ_bounds_refined = state_dict[:bounds]
-		all_state_means = state_dict[:state_means]
-		all_image_means = state_dict[:image_means]
 		
 		imdp_dict = BSON.load(imdp_refined_filename)
 		P̌ = imdp_dict[:Pcheck]
 		P̂ = imdp_dict[:Phat]
     else
+        # TODO: This is all the same!
         # Local GP setup
         local_gps_flag = config["local"]["use_local_gps"]
         local_gps_nns = config["local"]["local_gp_neighbors"]
@@ -57,20 +62,16 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
             input_data = data_dict[:input]
             output_data = data_dict[:output]
             local_gps_data = (input_data, output_data)
+        else
+            local_gps_data = nothing
         end
 
         L = SA_F64[config["workspace"]["lower"]...]
         U = SA_F64[config["workspace"]["upper"]...]
         X_extent = [[l u] for (l, u) in zip(L,U)]
 
-        # Load the GPs // or // construct the local GPs 
+        # Load the existing global GPs
         gps, gp_info = load_gps(gps_filename)
-        neg_gps = []
-        for gp in gps
-            neg_gp = deepcopy(gp)
-            neg_gp.alpha *= -1
-            push!(neg_gps, neg_gp)
-        end
 
         # Generate new discretization
         new_states_list = []
@@ -91,50 +92,21 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
         deleteat!(all_state_images_refined, states_to_refine)
         deleteat!(all_σ_bounds_refined, states_to_refine)
 
-        # Setup for bounding refined states with local GP regression
-        if local_gps_flag
-            kdtree = KDTree(local_gps_data[1])
-        end
+        new_images, new_σ_bounds = calculate_state_bounds(new_states_list, gps; local_gps_flag=local_gps_flag, local_gps_data=local_gps_data, local_gps_nns=local_gps_nns)
+        all_state_images_refined = vcat(all_state_images_refined, new_images)
+        all_σ_bounds_refined = vcat(all_σ_bounds_refined, new_σ_bounds)
 
-        # Generate new posterior bounds
-        p = Progress(length(new_states_list), desc="Computing image bounds...", dt=30)
-        Threads.@threads for new_state in new_states_list 
-
-            # If local GP, create local GP here
-            if local_gps_flag
-                state_mean = 0.5*(new_state[:,1] + new_state[:,end-1])
-                local_gps = create_local_gps(local_gps_data[1], local_gps_data[2], state_mean, num_neighbors=local_gps_nns, kdtree=kdtree)
-                local_neg_gps = []
-                for gp in local_gps
-                    neg_gp = deepcopy(gp)
-                    neg_gp.alpha *= -1
-                    push!(local_neg_gps, neg_gp)
-                end
-                image, σ_bounds = LearningAbstractions.GPBounding.bound_image([new_state[:,1], new_state[:,end-1]], local_gps, local_neg_gps) 
-            
-            else
-                image, σ_bounds = LearningAbstractions.GPBounding.bound_image([new_state[:,1], new_state[:,end-1]], gps, neg_gps)
-            end
-            push!(all_state_images_refined, extent_to_SA(image))
-            push!(all_σ_bounds_refined, σ_bounds)
-            next!(p)
-        end
-
-        all_state_means = [0.5*(s[:,1] + s[:,end-1]) for s in all_states_refined]
-        all_image_means = [0.5*(s[:,1] + s[:,end-1]) for s in all_state_images_refined] 
-
-        P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_refined, all_state_images_refined, all_state_means, all_image_means, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_σ_bounds_refined)
+        P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_refined, all_state_images_refined, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_σ_bounds_refined)
 
         @info "Saving abstraction info to $refinement_dir"
         
         bson(state_refined_filename, Dict(:states => all_states_refined,
                             :images => all_state_images_refined,
                             :bounds => all_σ_bounds_refined,
-                            :state_means => all_state_means,
-                            :image_means => all_image_means)
+                            )
         )
 
         bson(imdp_refined_filename, Dict(:Pcheck => P̌, :Phat => P̂))
     end
-    return P̌, P̂, all_states_refined, all_state_means, refinement_dir, all_state_images_refined, all_σ_bounds_refined
+    return P̌, P̂, all_states_refined, refinement_dir, all_state_images_refined, all_σ_bounds_refined
 end
