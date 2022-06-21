@@ -62,7 +62,7 @@ function learn_abstraction(config_file::String)
 	local_gps_nns = config["local"]["local_gp_neighbors"]
 	full_gp_subset = config["local"]["full_gp_subset"]
 	if local_gps_flag
-		@info "Performing local GP regression with $local_neighbors-nearest neighbors"
+		@info "Performing local GP regression with $local_gps_nns-nearest neighbors"
 	end
 
 	if config["reuse_results"] && isfile(imdp_filename)
