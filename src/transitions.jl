@@ -66,7 +66,7 @@ function generate_pairwise_transitions(states, images; gp_rkhs_info=nothing, σ_
     state_radius = norm(states[1][:,1] - states[1][:,end-1])/2
     fast_checks = 0
 
-    p = Progress(num_states^2, desc="Computing transition intervals...", dt=30)
+    p = Progress(num_states^2, desc="Computing transition intervals...", dt=status_bar_period)
 
     for i in 1:num_states 
         image = images[i]
@@ -96,7 +96,7 @@ function generate_pairwise_transitions(states, images; gp_rkhs_info=nothing, σ_
 
     num_trans = num_states^2
     fast_frac = fast_checks/num_trans
-    @info "$fast_checks / $num_trans ($fast_frac) states passed quick check."
+    @info "$fast_checks / $num_trans ($fast_frac) transition pairs passed quick check."
     # Take the transpose to get the correct 
     return P̌', P̂' 
 end

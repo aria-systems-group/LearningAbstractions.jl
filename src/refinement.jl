@@ -92,7 +92,7 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
         deleteat!(all_state_images_refined, states_to_refine)
         deleteat!(all_σ_bounds_refined, states_to_refine)
 
-        new_images, new_σ_bounds = calculate_state_bounds(new_states_list, gps; local_gps_flag=local_gps_flag, local_gps_data=local_gps_data, local_gps_nns=local_gps_nns)
+        new_images, new_σ_bounds = state_bounds(new_states_list, gps; local_gps_flag=local_gps_flag, local_gps_data=local_gps_data, local_gps_nns=local_gps_nns)
         all_state_images_refined = vcat(all_state_images_refined, new_images)
         all_σ_bounds_refined = vcat(all_σ_bounds_refined, new_σ_bounds)
 
@@ -109,4 +109,29 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
         bson(imdp_refined_filename, Dict(:Pcheck => P̌, :Phat => P̂))
     end
     return P̌, P̂, all_states_refined, refinement_dir, all_state_images_refined, all_σ_bounds_refined
+end
+
+function find_states_to_refine(P̂, res_mat; p_threshold=0.95)
+
+    n_yes = findall(x -> x>=p_threshold, res_mat[:,3])
+    n_no = findall(x -> x<p_threshold, res_mat[:,4])
+
+    if isempty(n_yes)
+        # if nothing is yes, such as in safety, return all states for refinement
+        return res_mat[:,1]
+    end
+
+    # now n_yes consists of states that satisfy the spec
+    # the idea is to only refine states that may possibly satisfy and can transition to this set
+    states_to_refine = []
+    
+    for n in n_yes
+        poss_states = findall(x -> x>0., P̂[:,n]) 
+        setdiff!(poss_states, n_yes)
+        setdiff!(poss_states, n_no)
+        setdiff!(poss_states, states_to_refine)
+        union!(states_to_refine, poss_states) 
+    end
+
+    return sort(states_to_refine)
 end
