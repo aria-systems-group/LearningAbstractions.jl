@@ -63,8 +63,12 @@ function learn_abstraction(config_file::String)
 	local_gps_flag = config["local"]["use_local_gps"]
 	local_gps_nns = config["local"]["local_gp_neighbors"]
 	full_gp_subset = config["local"]["full_gp_subset"]
+	local_gp_metadata = nothing
+
 	if local_gps_flag
 		@info "Performing local GP regression with $local_gps_nns-nearest neighbors"
+		# TODO: This needs to be put somewhere else!!
+		local_gp_metadata = [[1.0, 1.0, 1.0], [0.65, 0.65, 0.65], local_gps_nns]
 	end
 
 	if config["reuse_results"] && isfile(imdp_filename)
@@ -92,7 +96,7 @@ function learn_abstraction(config_file::String)
 		sup_f = maximum(U) + lipschitz_bound*diameter_domain
 		gp_info = LearningAbstractions.create_gp_info(gps, σ_noise, diameter_domain, sup_f)
 		save_gps(Dict(:gps => gps, :info => gp_info), gps_filename)
-		P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_state_σ_bounds)
+		P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_state_σ_bounds, local_gp_metadata=local_gp_metadata)
 	else
 		# TODO: using subset of data to get RKHS-related constants is inelegant
 		gps = LearningAbstractions.condition_gps(input_data, output_data, data_subset=full_gp_subset)
@@ -106,7 +110,7 @@ function learn_abstraction(config_file::String)
 		[all_states_SA[i] = LearningAbstractions.lower_to_SA(grid_lower, grid_spacing) for (i,grid_lower) in enumerate(grid)]
 		all_state_images, all_state_σ_bounds = state_bounds(all_states_SA, gps; local_gps_flag=local_gps_flag, local_gps_data=(input_data, output_data), local_gps_nns=local_gps_nns)
 
-		P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_state_σ_bounds)
+		P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_state_σ_bounds, local_gp_metadata=local_gp_metadata)
 	end
 	
 	if config["save_results"] && !reloaded_results_flag

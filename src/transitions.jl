@@ -33,15 +33,15 @@ function distance(X::SMatrix, Y::SMatrix)
     return minimum_distance(X, Y, dir, atol=1e-6)
 end
 
-function generate_all_transitions(grid, images, full_set; gp_rkhs_info=nothing, σ_bounds_all=nothing, ϵ_manual=nothing)
+function generate_all_transitions(grid, images, full_set; gp_rkhs_info=nothing, σ_bounds_all=nothing, ϵ_manual=nothing, local_gp_metadata=nothing)
     num_states = length(grid) + 1 # All states plus the unsafe state!
     P̌ = spzeros(num_states, num_states)
     P̂ = spzeros(num_states, num_states) 
-    P̌[1:end-1, 1:end-1], P̂[1:end-1, 1:end-1] = generate_pairwise_transitions(grid, images, gp_rkhs_info=gp_rkhs_info, σ_bounds_all=σ_bounds_all, ϵ_manual=ϵ_manual) 
+    P̌[1:end-1, 1:end-1], P̂[1:end-1, 1:end-1] = generate_pairwise_transitions(grid, images, gp_rkhs_info=gp_rkhs_info, σ_bounds_all=σ_bounds_all, ϵ_manual=ϵ_manual, local_gp_metadata=local_gp_metadata) 
     @info "Finished generating pairwise transitions."
     for i in 1:num_states-1 
         σ_bounds = isnothing(gp_rkhs_info) ? nothing : σ_bounds_all[i]  
-        p̌, p̂ = transition_inverval(images[i], full_set, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds, ϵ_manual=ϵ_manual) 
+        p̌, p̂ = transition_inverval(images[i], full_set, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds, ϵ_manual=ϵ_manual, local_gp_metadata=local_gp_metadata) 
         P̌[i,end] = 1 - p̂
         P̂[i,end] = 1 - p̌ 
     end 
@@ -52,7 +52,7 @@ function generate_all_transitions(grid, images, full_set; gp_rkhs_info=nothing, 
     return P̌, P̂ 
 end
 
-function generate_pairwise_transitions(states, images; gp_rkhs_info=nothing, σ_bounds_all=nothing, ϵ_manual=nothing)
+function generate_pairwise_transitions(states, images; gp_rkhs_info=nothing, σ_bounds_all=nothing, ϵ_manual=nothing, local_gp_metadata=nothing)
 
     num_states = length(states)
     P̌ = spzeros(num_states, num_states)
@@ -86,7 +86,7 @@ function generate_pairwise_transitions(states, images; gp_rkhs_info=nothing, σ_
         for j in 1:num_states 
             statep_sa = states[j]
             if fast_check(mean_image, all_state_means[j], ϵ_crit, image_radius, state_radius) 
-                P̌[j,i], P̂[j,i] = transition_inverval(image, statep_sa, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds, ϵ_manual=ϵ_manual, local_RKHS_bound=RKHS_bound_local) 
+                P̌[j,i], P̂[j,i] = transition_inverval(image, statep_sa, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds, ϵ_manual=ϵ_manual, local_RKHS_bound=RKHS_bound_local, local_gp_metadata=local_gp_metadata) 
             else
                 fast_checks += 1
             end
@@ -108,7 +108,7 @@ function fast_check(mean_pt, mean_target, ϵ_crit, image_radius, set_radius)
     return flag
 end
 
-function transition_inverval(X,Y; gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_manual=nothing, local_RKHS_bound=nothing)
+function transition_inverval(X,Y; gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_manual=nothing, local_RKHS_bound=nothing, local_gp_metadata=nothing)
     dis = distance(X, Y)
     #===
     Full or Partial Intersection
@@ -121,7 +121,7 @@ function transition_inverval(X,Y; gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_ma
         ===#
         if containment_flag     
             if !isnothing(gp_rkhs_info)
-                p̌ = chowdhury_rkhs_prob_vector(gp_rkhs_info, σ_bounds, min_distance,local_RKHS_bound=local_RKHS_bound) 
+                p̌ = chowdhury_rkhs_prob_vector(gp_rkhs_info, σ_bounds, min_distance,local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata) 
             else
                 p̌ = 1.          
             end
@@ -133,7 +133,7 @@ function transition_inverval(X,Y; gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_ma
     ===#
     else
         if !isnothing(gp_rkhs_info)
-            p̂ = 1 - chowdhury_rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis, local_RKHS_bound=local_RKHS_bound)
+            p̂ = 1 - chowdhury_rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis, local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata)
         else
             p̂ = 0. 
         end
