@@ -33,18 +33,38 @@ function distance(X::SMatrix, Y::SMatrix)
     return minimum_distance(X, Y, dir, atol=1e-6)
 end
 
-function generate_all_transitions(grid, images, full_set; gp_rkhs_info=nothing, σ_bounds_all=nothing, ϵ_manual=nothing, local_gp_metadata=nothing)
+function generate_all_transitions(grid, images, full_set; gp_rkhs_info=nothing, σ_bounds_all=nothing, ϵ_manual=nothing, local_gp_metadata=nothing, P̌_hot=nothing, P̂_hot=nothing, target_idxs_dict=nothing)
     num_states = length(grid) + 1 # All states plus the unsafe state!
     P̌ = spzeros(num_states, num_states)
     P̂ = spzeros(num_states, num_states) 
-    P̌[1:end-1, 1:end-1], P̂[1:end-1, 1:end-1] = generate_pairwise_transitions(grid, images, gp_rkhs_info=gp_rkhs_info, σ_bounds_all=σ_bounds_all, ϵ_manual=ϵ_manual, local_gp_metadata=local_gp_metadata) 
+
+    P̌[1:end-1, 1:end-1], P̂[1:end-1, 1:end-1] = generate_pairwise_transitions(grid, images, gp_rkhs_info=gp_rkhs_info, σ_bounds_all=σ_bounds_all, ϵ_manual=ϵ_manual, local_gp_metadata=local_gp_metadata, target_idxs_dict=target_idxs_dict) 
+
+    hot_idx = []
+
+    if !isnothing(P̌_hot) && !isnothing(P̂_hot)
+        num_hot = size(P̌_hot)[1]
+        hot_idx = 1:num_hot-1
+
+        nh2 = num_hot^2
+        ns2 = num_states^2
+        fr = nh2/ns2
+        @info "Reusing $nh2/$ns2 ($fr) transitions"
+
+        P̌[1:num_hot-1, 1:num_hot-1] = P̌_hot[1:end-1, 1:end-1]
+        P̂[1:num_hot-1, 1:num_hot-1] = P̂_hot[1:end-1, 1:end-1]
+        P̌[1:num_hot-1, end] = P̌_hot[1:end-1, end]
+        P̂[1:num_hot-1, end] = P̂_hot[1:end-1, end]
+    end
     @info "Finished generating pairwise transitions."
-    for i in 1:num_states-1 
+
+    for i in setdiff(1:num_states-1, hot_idx)   # Always calculating transitions to the unsafe set!
         σ_bounds = isnothing(gp_rkhs_info) ? nothing : σ_bounds_all[i]  
         p̌, p̂ = transition_inverval(images[i], full_set, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds, ϵ_manual=ϵ_manual, local_gp_metadata=local_gp_metadata) 
         P̌[i,end] = 1 - p̂
         P̂[i,end] = 1 - p̌ 
     end 
+
     @info "Finished generating transitions to unsafe state."
     P̌[end,end] = 1.
     P̂[end,end] = 1.
@@ -52,7 +72,7 @@ function generate_all_transitions(grid, images, full_set; gp_rkhs_info=nothing, 
     return P̌, P̂ 
 end
 
-function generate_pairwise_transitions(states, images; gp_rkhs_info=nothing, σ_bounds_all=nothing, ϵ_manual=nothing, local_gp_metadata=nothing)
+function generate_pairwise_transitions(states, images; gp_rkhs_info=nothing, σ_bounds_all=nothing, ϵ_manual=nothing, local_gp_metadata=nothing, target_idxs_dict=nothing)
 
     num_states = length(states)
     P̌ = spzeros(num_states, num_states)
@@ -65,6 +85,8 @@ function generate_pairwise_transitions(states, images; gp_rkhs_info=nothing, σ_
     # TODO: Replace this when grid is replaced
     state_radius = norm(states[1][:,1] - states[1][:,end-1])/2
     fast_checks = 0
+    skipped_idxs = 0
+    checked_idxs = 0
 
     p = Progress(num_states^2, desc="Computing transition intervals...", dt=status_bar_period)
 
@@ -74,8 +96,9 @@ function generate_pairwise_transitions(states, images; gp_rkhs_info=nothing, σ_
         mean_image = all_image_means[i]
         if !isnothing(gp_rkhs_info)
             σ_bounds = σ_bounds_all[i]
-            # ! TODO: Generalize
-            RKHS_bound_local = gp_rkhs_info.f_sup / sqrt(exp(-1/2*(2*state_radius)^2/0.6))
+            # ! TODO: Generalize!!!!!
+            # ! TODO: Use Local f_sup!!!!!
+            RKHS_bound_local = gp_rkhs_info.f_sup / sqrt(exp(-1/2*(2*state_radius)^2/exp(0.65)))
             ϵ_crit = calculate_ϵ_crit(gp_rkhs_info, σ_bounds, local_RKHS_bound=RKHS_bound_local)
         else
             σ_bounds = nothing
@@ -83,10 +106,28 @@ function generate_pairwise_transitions(states, images; gp_rkhs_info=nothing, σ_
             ϵ_crit = 0. 
         end
 
-        for j in 1:num_states 
+        if !isnothing(target_idxs_dict) && i∈keys(target_idxs_dict)
+            idxs_to_check = target_idxs_dict[i]
+            l = length(idxs_to_check)
+            skipped_idxs += num_states - l
+            checked_idxs += l
+        else
+            idxs_to_check = 1:num_states 
+            checked_idxs += num_states
+        end
+
+        # TODO: This is a first whack at doing this in a parallel way - not the best way to do it!
+        lk = ReentrantLock()
+        Threads.@threads for j in idxs_to_check
             statep_sa = states[j]
             if fast_check(mean_image, all_state_means[j], ϵ_crit, image_radius, state_radius) 
-                P̌[j,i], P̂[j,i] = transition_inverval(image, statep_sa, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds, ϵ_manual=ϵ_manual, local_RKHS_bound=RKHS_bound_local, local_gp_metadata=local_gp_metadata) 
+                res = transition_inverval(image, statep_sa, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds, ϵ_manual=ϵ_manual, local_RKHS_bound=RKHS_bound_local, local_gp_metadata=local_gp_metadata) 
+                lock(lk) do 
+                    P̌[j,i] = res[1]
+                end 
+                lock(lk) do 
+                    P̂[j,i] = res[2]
+                end 
             else
                 fast_checks += 1
             end
@@ -95,8 +136,10 @@ function generate_pairwise_transitions(states, images; gp_rkhs_info=nothing, σ_
     end
 
     num_trans = num_states^2
-    fast_frac = fast_checks/num_trans
-    @info "$fast_checks / $num_trans ($fast_frac) transition pairs passed quick check."
+    skipped_frac = skipped_idxs / num_trans
+    @info "$skipped_idxs / $num_trans ($skipped_frac) transition pairs skipped."
+    fast_frac = fast_checks/checked_idxs
+    @info "$fast_checks / $checked_idxs ($fast_frac) transition pairs passed quick check."
     # Take the transpose to get the correct 
     return P̌', P̂' 
 end

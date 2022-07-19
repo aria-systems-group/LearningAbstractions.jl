@@ -16,7 +16,7 @@ end
 Refine the abstraction.
 """
 # TODO: There is a lot of redundant code here with the find images function. Consolidate when I have more time. 
-function refine_abstraction(config_filename, all_states_SA, all_state_images, all_σ_bounds, states_to_refine; refinement_dirname=nothing)
+function refine_abstraction(config_filename, all_states_SA, all_state_images, all_σ_bounds, states_to_refine, P̌_old, P̂_old; refinement_dirname=nothing)
     f = open(config_filename)
 	config = TOML.parse(f)
 	close(f)
@@ -75,9 +75,18 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
 
         # Generate new discretization
         new_states_list = []
+        new_state_dict = Dict() # Mapping to help update transition probability intervals
+        old_state_dict = Dict()
+        new_state_idx = num_states - num_refine_states + 1 # We now have a dictionary that can be used to go from new state to old state!! 
         for state_to_refine in states_to_refine
             new_states = uniform_refinement(all_states_SA[state_to_refine])
             push!(new_states_list, new_states...)
+            old_state_dict[state_to_refine] = []
+            for state in new_states
+                new_state_dict[new_state_idx] = state_to_refine
+                push!(old_state_dict[state_to_refine], new_state_idx) 
+                new_state_idx += 1
+            end
         end
 
         # delete the old states
@@ -96,7 +105,65 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
         all_state_images_refined = vcat(all_state_images_refined, new_images)
         all_σ_bounds_refined = vcat(all_σ_bounds_refined, new_σ_bounds)
 
-        P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_refined, all_state_images_refined, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_σ_bounds_refined)
+
+        #! This is a hot mess, but it works.
+
+        # For each new state, 
+        target_idxs_dict = Dict()
+        for new_state_idx in sort(collect(keys(new_state_dict)))
+            # target idxs to compute transition interval - zero otherwise!!
+            target_idxs = []
+            old_idx = new_state_dict[new_state_idx] 
+            succ_states = findall(x -> x > 0., P̂_old[old_idx, :])
+            for succ_state in succ_states 
+                # Is the successor state a target of refinement? If so, add all those new state idxs to the transition targets
+                if succ_state in states_to_refine
+                    push!(target_idxs, old_state_dict[succ_state]...) 
+                # Otherwise, it is an unrefined state that may have a new index. Calculate this value here.
+                else
+                    # Calculate the new index of the unrefined state
+                    num_states_prior = sum(states_to_refine .< succ_state)
+                    new_unrefined_idx = succ_state - num_states_prior
+                    # @info "Old idx: $succ_state, New idx: $new_unrefined_idx, sum: $num_states_prior"
+                    push!(target_idxs, new_unrefined_idx)
+                end
+            end
+            if isempty(target_idxs)
+                throw("Target index set is empty for state $new_state_idx. This should not happen.")
+            end
+            @assert new_state_idx ∉ keys(target_idxs_dict)
+            target_idxs_dict[new_state_idx] = sort(unique(target_idxs))
+        end
+
+        # For all other states, only focus on transitions to states that were refined
+        # Iterate over only the hot idxs
+        hot_idxs = setdiff(1:num_states+1, states_to_refine)
+
+        # Error is here!!!
+        j_dummy = 1 # Need a dummy index to correctly assign target idx dict
+        for i in hot_idxs[1:end-1]
+            target_idxs = []
+
+            # Find all possible transitions according to old matrix 
+            succ_states = findall(x -> x>0., P̂_old[i, :]) # yes, got all the successor states
+
+            for state in succ_states 
+                if state in states_to_refine
+                    push!(target_idxs, old_state_dict[state]...) 
+                end
+                # Ignore the unrefined states, because we set them later with hot indeces
+            end
+            @assert j_dummy ∉ keys(target_idxs_dict)
+            target_idxs_dict[j_dummy] = sort(unique(target_idxs)) 
+            j_dummy += 1
+        end
+
+        @assert length(keys(target_idxs_dict)) == length(all_states_refined)
+        # Hot includes the unsafe state in the final rows and cols
+        P̌_hot = P̌_old[hot_idxs, hot_idxs] 
+        P̂_hot = P̂_old[hot_idxs, hot_idxs] 
+
+        P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_refined, all_state_images_refined, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_σ_bounds_refined, P̌_hot=P̌_hot, P̂_hot=P̂_hot, target_idxs_dict=target_idxs_dict)
 
         @info "Saving abstraction info to $refinement_dir"
         
@@ -111,7 +178,7 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
     return P̌, P̂, all_states_refined, refinement_dir, all_state_images_refined, all_σ_bounds_refined
 end
 
-function find_states_to_refine(P̂, res_mat; p_threshold=0.95)
+function find_states_to_refine(P̂, res_mat; p_threshold=0.95, refine_targets=false, refine_unsafe=false)
 
     n_yes = findall(x -> x>=p_threshold, res_mat[:,3])
     n_no = findall(x -> x<p_threshold, res_mat[:,4])
@@ -131,6 +198,27 @@ function find_states_to_refine(P̂, res_mat; p_threshold=0.95)
         setdiff!(poss_states, n_no)
         setdiff!(poss_states, states_to_refine)
         union!(states_to_refine, poss_states) 
+    end
+
+    if refine_unsafe
+        for n in n_no
+            poss_states = findall(x -> x>0., P̂[:,n]) 
+            setdiff!(poss_states, n_yes)
+            setdiff!(poss_states, n_no)
+            setdiff!(poss_states, states_to_refine)
+            union!(states_to_refine, poss_states) 
+        end
+    end
+
+    if refine_targets
+        for poss_state in states_to_refine 
+            poss_targets = findall(x -> x > 0.0, P̂[poss_state, :])
+            setdiff!(poss_targets, n_yes)
+            setdiff!(poss_targets, n_no)
+            setdiff!(poss_targets, states_to_refine)
+            union!(states_to_refine, poss_targets)
+        end
+
     end
 
     return sort(states_to_refine)
