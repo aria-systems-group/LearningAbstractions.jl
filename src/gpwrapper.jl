@@ -61,7 +61,7 @@ function get_local_data_knn(center, x_data, y_data; num_neighbors = 50, kdtree=n
     num_neighbors = minimum([num_neighbors, size(x_data,2)])
 
     if isnothing(kdtree)
-        kdtree = KDTree(x_data);
+        kdtree = KDTree(x_data)
     end
 
     sub_idx, _ = knn(kdtree, center, num_neighbors, false)

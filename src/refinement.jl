@@ -22,9 +22,6 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
 	close(f)
 
     num_states = length(all_states_SA)
-    num_refine_states = length(states_to_refine)
-    frac = length(states_to_refine)/num_states
-    @info "Refining $num_refine_states of $num_states ($frac) states"
 	
     results_dir = config["results_directory"]
 	# state_filename = "$results_dir/states.bson"
@@ -73,6 +70,17 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
         # Load the existing global GPs
         gps, gp_info = load_gps(gps_filename)
 
+        # Filter out states to refine if the radius is too small
+        state_radii = [sqrt(sum((all_states_SA[i][:,1]-all_states_SA[i][:,end-1]).^2)) for i in states_to_refine]
+        filter_idx = findall(x -> x < 0.08, state_radii)
+        nf = length(filter_idx)
+        @info "Skipping the refinement of $nf states" 
+        deleteat!(states_to_refine, filter_idx)
+
+        num_refine_states = length(states_to_refine)
+        frac = length(states_to_refine)/num_states
+        @info "Refining $num_refine_states of $num_states ($frac) states"
+
         # Generate new discretization
         new_states_list = []
         new_state_dict = Dict() # Mapping to help update transition probability intervals
@@ -88,23 +96,6 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
                 new_state_idx += 1
             end
         end
-
-        # delete the old states
-        all_states_refined = copy(all_states_SA)
-        all_state_images_refined = copy(all_state_images)
-        all_σ_bounds_refined = copy(all_σ_bounds)
-
-        deleteat!(all_states_refined, states_to_refine)
-        push!(all_states_refined, new_states_list...)
-
-        # delete old image bounds
-        deleteat!(all_state_images_refined, states_to_refine)
-        deleteat!(all_σ_bounds_refined, states_to_refine)
-
-        new_images, new_σ_bounds = state_bounds(new_states_list, gps; local_gps_flag=local_gps_flag, local_gps_data=local_gps_data, local_gps_nns=local_gps_nns)
-        all_state_images_refined = vcat(all_state_images_refined, new_images)
-        all_σ_bounds_refined = vcat(all_σ_bounds_refined, new_σ_bounds)
-
 
         #! This is a hot mess, but it works.
 
@@ -139,13 +130,12 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
         # Iterate over only the hot idxs
         hot_idxs = setdiff(1:num_states+1, states_to_refine)
 
-        # Error is here!!!
         j_dummy = 1 # Need a dummy index to correctly assign target idx dict
         for i in hot_idxs[1:end-1]
             target_idxs = []
 
             # Find all possible transitions according to old matrix 
-            succ_states = findall(x -> x>0., P̂_old[i, :]) # yes, got all the successor states
+            succ_states = findall(x -> x>0., P̂_old[i, 1:end-1]) # yes, got all the successor states
 
             for state in succ_states 
                 if state in states_to_refine
@@ -158,7 +148,30 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
             j_dummy += 1
         end
 
-        @assert length(keys(target_idxs_dict)) == length(all_states_refined)
+        if config["reuse_states"] && isfile(state_refined_filename)
+            @info "Reloading state information $results_dir"
+		    state_dict = BSON.load(state_refined_filename)
+
+		    all_states_refined = state_dict[:states]
+		    all_state_images_refined = state_dict[:images]
+		    all_σ_bounds_refined = state_dict[:bounds]
+        else
+            # delete the old states
+            all_states_refined = copy(all_states_SA)
+            all_state_images_refined = copy(all_state_images)
+            all_σ_bounds_refined = copy(all_σ_bounds)
+
+            deleteat!(all_states_refined, states_to_refine)
+            push!(all_states_refined, new_states_list...)
+
+            # delete old image bounds
+            deleteat!(all_state_images_refined, states_to_refine)
+            deleteat!(all_σ_bounds_refined, states_to_refine)
+
+            new_images, new_σ_bounds = state_bounds(new_states_list, gps; local_gps_flag=local_gps_flag, local_gps_data=local_gps_data, local_gps_nns=local_gps_nns)
+            all_state_images_refined = vcat(all_state_images_refined, new_images)
+            all_σ_bounds_refined = vcat(all_σ_bounds_refined, new_σ_bounds)
+        end
         # Hot includes the unsafe state in the final rows and cols
         P̌_hot = P̌_old[hot_idxs, hot_idxs] 
         P̂_hot = P̂_old[hot_idxs, hot_idxs] 
@@ -185,7 +198,7 @@ function find_states_to_refine(P̂, res_mat; p_threshold=0.95, refine_targets=fa
 
     if isempty(n_yes)
         # if nothing is yes, such as in safety, return all states for refinement
-        return res_mat[:,1]
+        return Int.(res_mat[1:end-1,1])
     end
 
     # now n_yes consists of states that satisfy the spec
