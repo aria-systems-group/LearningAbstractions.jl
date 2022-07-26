@@ -53,14 +53,18 @@ function bound_image(extent, gps::Vector{Any}, neg_gps::Vector{Any}; data_deps=n
     return image_extent, σ_bounds
 end
 
-function bound_extent_dim(gp, neg_gp, lbf, ubf)
+function bound_extent_dim(gp, neg_gp, lbf, ubf; approximate_flag=false)
     # # lbf = lb[findall(.>(0), data_deps[dim_key][:])]
     # ubf = ub[findall(.>(0), data_deps[dim_key][:])]
     # TODO: Avoid deep copy! At all costs! For 2000 dps, 404MB vs 38MB!
     # x_lb, μ_L_lb, μ_L_ub = compute_μ_bounds_bnb(deepcopy(gp), lbf, ubf) 
-    _, μ_L_lb, _ = compute_μ_bounds_bnb(gp, lbf, ubf) 
-    # x_ub, μ_U_lb, μ_U_ub = compute_μ_bounds_bnb(deepcopy(gp), lbf, ubf, max_flag=true)
-    _, _, μ_U_ub = compute_μ_bounds_bnb(neg_gp, lbf, ubf, max_flag=true)
+    if approximate_flag
+        μ_L_lb, μ_U_ub = compute_μ_bounds_approx(gp, lbf, ubf) 
+    else
+        _, μ_L_lb, _ = compute_μ_bounds_bnb(gp, lbf, ubf) 
+        # x_ub, μ_U_lb, μ_U_ub = compute_μ_bounds_bnb(deepcopy(gp), lbf, ubf, max_flag=true)
+        _, _, μ_U_ub = compute_μ_bounds_bnb(neg_gp, lbf, ubf, max_flag=true)
+    end
 
     # if σ_approx_flag
     _, σ_U_lb, σ_U_ub = compute_σ_ub_bounds_approx(gp, lbf, ubf) 
@@ -229,6 +233,16 @@ function compute_σ_ub_bounds(gp, K_inv, x_L, x_U; max_iterations=10, bound_epsi
     
     return x_best, lbest, ubest
     
+end
+
+function compute_μ_bounds_approx(gp, x_L, x_U; N=100)
+    mt = MersenneTwister(11)
+    # Get N samples uniformly dist.
+    x_samp = vcat([rand(mt, Uniform(x_L[i], x_U[i]), 1, N) for i=1:length(x_L)]...)
+    μ, _ = predict_f(gp, x_samp)
+    μ_lb = minimum(μ) 
+    μ_ub = maximum(μ)
+    return μ_lb, μ_ub 
 end
 
 function compute_σ_ub_bounds_approx(gp, x_L, x_U; N=100)
