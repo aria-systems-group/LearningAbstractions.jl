@@ -27,6 +27,7 @@ include("images.jl")
 include("refinement.jl")
 include("transitions.jl")
 include("imdptools.jl")
+include("merging.jl")
 include("plotting.jl")
 
 function learn_abstraction(config_file::String)
