@@ -7,6 +7,8 @@ using ProgressMeter
 
 using GaussianProcesses
 using NearestNeighbors
+using Distances
+import Distances: evaluate
 using StatsBase
 
 using Meshes
@@ -37,6 +39,7 @@ function learn_abstraction(config_file::String)
 	
 	L = SA_F64[config["workspace"]["lower"]...]
 	U = SA_F64[config["workspace"]["upper"]...]
+	domain_type = config["workspace"]["domain_type"]
 	X_extent = [[l u] for (l, u) in zip(L,U)]
 	diameter_domain = sqrt(sum((L-U).^2))
 	grid_spacing = SA_F64[config["discretization"]["grid_spacing"]...]
@@ -109,7 +112,7 @@ function learn_abstraction(config_file::String)
 		n_states = length(grid)
 		all_states_SA = Vector{SMatrix}(undef, n_states)
 		[all_states_SA[i] = LearningAbstractions.lower_to_SA(grid_lower, grid_spacing) for (i,grid_lower) in enumerate(grid)]
-		all_state_images, all_state_σ_bounds = state_bounds(all_states_SA, gps; local_gps_flag=local_gps_flag, local_gps_data=(input_data, output_data), local_gps_nns=local_gps_nns)
+		all_state_images, all_state_σ_bounds = state_bounds(all_states_SA, gps; local_gps_flag=local_gps_flag, local_gps_data=(input_data, output_data), local_gps_nns=local_gps_nns, domain_type=domain_type)
 
 		P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_state_σ_bounds, local_gp_metadata=local_gp_metadata)
 	end

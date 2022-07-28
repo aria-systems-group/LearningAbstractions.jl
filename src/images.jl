@@ -1,6 +1,6 @@
 # Functions to find the images of discrete states
 
-function state_bounds(states_vec, gps; local_gps_flag=false, local_gps_data=nothing, local_gps_nns=nothing)
+function state_bounds(states_vec, gps; local_gps_flag=false, local_gps_data=nothing, local_gps_nns=nothing, domain_type="")
  
     image_vec = Vector{typeof(states_vec[1])}(undef, length(states_vec))
     σ_bounds_vec = Vector{Vector{Real}}(undef, length(states_vec))
@@ -15,7 +15,7 @@ function state_bounds(states_vec, gps; local_gps_flag=false, local_gps_data=noth
 
     # Setup for bounding refined states with local GP regression
     if local_gps_flag
-        kdtree = KDTree(local_gps_data[1])
+        tree = create_data_tree(local_gps_data[1], domain_type) 
     end
 
     # Generate new posterior bounds
@@ -24,7 +24,7 @@ function state_bounds(states_vec, gps; local_gps_flag=false, local_gps_data=noth
         # If local GP, create local GP here
         if local_gps_flag
             state_mean = 0.5*(state[:,1] + state[:,end-1])
-            local_gps = create_local_gps(local_gps_data[1], local_gps_data[2], state_mean, num_neighbors=local_gps_nns, kdtree=kdtree)
+            local_gps = create_local_gps(local_gps_data[1], local_gps_data[2], state_mean, num_neighbors=local_gps_nns, tree=tree)
             local_neg_gps = []
             for gp in local_gps
                 neg_gp = deepcopy(gp)

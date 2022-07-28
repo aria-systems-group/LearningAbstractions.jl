@@ -91,7 +91,7 @@ function iterative_merge(merge_idxs, state_array)
     return merge_dict, new_state_array 
 end
 
-function simple_merge(merge_idxs, state_array)
+function simple_merge(merge_idxs, state_array, domain_type="")
 
     candidate_merge_idxs = copy(merge_idxs)
 
@@ -99,7 +99,7 @@ function simple_merge(merge_idxs, state_array)
     state_means = LearningAbstractions.state_means(state_array)
 
     # build a KD tree
-    mean_tree = KDTree(state_means)
+    mean_tree = create_data_tree(local_gps_data[1], domain_type)
     nns = 2*size(state_array[1], 1) # max number of neighbors is fcn of dimension
 
     idxs_merged = [] 
