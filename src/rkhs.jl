@@ -17,14 +17,14 @@ function create_gp_info(gps, σ_noise, diameter_domain, sup_f)
 	RKHS_norm_bounds = []
 	logNoise = []
 	post_scale_factors = []
-	for gp in gps
+	for (i, gp) in enumerate(gps)
 		# Scale factor
 		push!(post_scale_factors, σ_noise/sqrt(1. + 2. / gp.nobs))
 		# logNoise
 		push!(logNoise, gp.logNoise.value)
 		# RKHS Norm Bound
 		σ_inf = sqrt(gp.kernel.σ2*exp(-1/2*(diameter_domain)^2/gp.kernel.ℓ2))
-		push!(RKHS_norm_bounds, sup_f / σ_inf)
+		push!(RKHS_norm_bounds, sup_f[i] / σ_inf)
 		# γ Bound
 		σ_v2 = (1 + 2/(gp.nobs))
 		push!(γ_bds, 0.5*gp.nobs*log(1+1/σ_v2))
@@ -55,7 +55,7 @@ function chowdhury_rkhs_prob_vector(gp_rkhs_info, σ_bounds, ϵ; local_RKHS_boun
 	
 	for i=1:length(σ_bounds)
 		# This calculates the probability of the dynamics being β(δ)*σ close.
-		RKHS_bound = isnothing(local_RKHS_bound) ? gp_rkhs_info.RKHS_norm_bounds[i] : local_RKHS_bound 
+		RKHS_bound = isnothing(local_RKHS_bound) ? gp_rkhs_info.RKHS_norm_bounds[i] : local_RKHS_bound[i]
 
 		if !isnothing(local_gp_metadata)
 			nobs = local_gp_metadata[3]
