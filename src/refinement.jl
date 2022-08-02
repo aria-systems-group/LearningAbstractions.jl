@@ -24,9 +24,13 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
     num_states = length(all_states_SA)
     domain_type = config["workspace"]["domain_type"]	
     results_dir = config["results_directory"]
+
+    filetag = split(basename(config_filename), ".")[1]
+	results_dir = "./results/$filetag"
+	base_results_dir = "$results_dir/base"
 	# state_filename = "$results_dir/states.bson"
 	# imdp_filename = "$results_dir/imdp.bson"
-	gps_filename = "$results_dir/gps.bson"
+	gps_filename = "$base_results_dir/gps.bson"
 
     refinement_dir = isnothing(refinement_dirname) ? "$results_dir/refined" : "$results_dir/$refinement_dirname"
     !isdir(refinement_dir) && mkpath(refinement_dir)

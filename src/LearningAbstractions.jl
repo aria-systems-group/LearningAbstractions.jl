@@ -55,11 +55,14 @@ function learn_abstraction(config_file::String)
 	input_data = data_dict[:input]
 	output_data = data_dict[:output]
 
-	results_dir = config["results_directory"]
-	mkpath(results_dir)
-	state_filename = "$results_dir/states.bson"
-	imdp_filename = "$results_dir/imdp.bson"
-	gps_filename = "$results_dir/gps.bson"
+	# results_dir = config["results_directory"]
+	filetag = split(basename(config_file), ".")[1]
+	results_dir = "./results/$filetag"
+	base_results_dir = "$results_dir/base"
+	mkpath(base_results_dir)
+	state_filename = "$base_results_dir/states.bson"
+	imdp_filename = "$base_results_dir/imdp.bson"
+	gps_filename = "$base_results_dir/gps.bson"
 	reloaded_states_flag = false
 	reloaded_results_flag = false
 
@@ -76,7 +79,7 @@ function learn_abstraction(config_file::String)
 	end
 
 	if config["reuse_results"] && isfile(imdp_filename)
-		@info "Reloading all state information and IMDP transitions from $results_dir"
+		@info "Reloading all state information and IMDP transitions from $base_results_dir"
 		state_dict = BSON.load(state_filename)
 		all_states_SA = state_dict[:states]
 		all_state_images = state_dict[:images]
@@ -118,8 +121,8 @@ function learn_abstraction(config_file::String)
 	end
 	
 	if config["save_results"] && !reloaded_results_flag
-		@info "Saving abstraction info to $results_dir"
-		mkpath(results_dir)
+		@info "Saving abstraction info to $base_results_dir"
+		mkpath(base_results_dir)
 
 		if !reloaded_states_flag && !reloaded_results_flag
 			bson(state_filename, Dict(:states => all_states_SA,
@@ -134,7 +137,7 @@ function learn_abstraction(config_file::String)
 		end
 	end
 
-	return P̌, P̂, all_states_SA, results_dir, all_state_images, all_state_σ_bounds
+	return P̌, P̂, all_states_SA, base_results_dir, all_state_images, all_state_σ_bounds
 end
 
 end
