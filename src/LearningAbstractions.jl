@@ -20,7 +20,6 @@ using ConvexBodyProximityQueries
 
 global status_bar_period = 30.0
 
-include("data.jl")
 include("gpwrapper.jl")
 include("GPBounding/GPBounding.jl")
 include("rkhs.jl")
