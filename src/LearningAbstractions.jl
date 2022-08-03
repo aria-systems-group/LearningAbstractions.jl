@@ -13,14 +13,12 @@ using StatsBase
 
 using Meshes
 using LinearAlgebra: norm, I, nullspace
-using Plots
 using SparseArrays
 using StaticArrays
 using ConvexBodyProximityQueries
 
 global status_bar_period = 30.0
 
-include("data.jl")
 include("gpwrapper.jl")
 include("GPBounding/GPBounding.jl")
 include("rkhs.jl")
@@ -30,7 +28,6 @@ include("refinement.jl")
 include("transitions.jl")
 include("imdptools.jl")
 include("merging.jl")
-include("plotting.jl")
 
 function learn_abstraction(config_file::String)
 	f = open(config_file)
