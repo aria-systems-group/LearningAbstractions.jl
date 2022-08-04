@@ -195,7 +195,7 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
     return P̌, P̂, all_states_refined, refinement_dir, all_state_images_refined, all_σ_bounds_refined
 end
 
-function find_states_to_refine(P̂, res_mat; p_threshold=0.95, refine_targets=false, refine_unsafe=false)
+function find_states_to_refine(P̂, res_mat, all_states; p_threshold=0.95, refine_targets=false, refine_unsafe=false, diameter_threshold=0.0)
 
     n_yes = findall(x -> x>=p_threshold, res_mat[:,3])
     n_no = findall(x -> x<p_threshold, res_mat[:,4])
@@ -236,6 +236,15 @@ function find_states_to_refine(P̂, res_mat; p_threshold=0.95, refine_targets=fa
             union!(states_to_refine, poss_targets)
         end
 
+    end
+
+
+    if diameter_threshold > 0.0
+        state_diameters = [sqrt(sum((all_states[i][:,1]-all_states[i][:,end-1]).^2)) for i in states_to_refine]
+        filter_idx = findall(x -> x < diameter_threshold, state_diameters)
+        nf = length(filter_idx)
+        @info "Skipping the refinement of $nf states" 
+        deleteat!(states_to_refine, filter_idx)
     end
 
     return sort(states_to_refine)
