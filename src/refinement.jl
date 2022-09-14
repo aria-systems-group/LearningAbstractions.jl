@@ -74,13 +74,6 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
         # Load the existing global GPs
         gps, gp_info = load_gps(gps_filename)
 
-        # Filter out states to refine if the radius is too small
-        state_radii = [sqrt(sum((all_states_SA[i][:,1]-all_states_SA[i][:,end-1]).^2)) for i in states_to_refine]
-        filter_idx = findall(x -> x < 0.08, state_radii)
-        nf = length(filter_idx)
-        @info "Skipping the refinement of $nf states" 
-        deleteat!(states_to_refine, filter_idx)
-
         num_refine_states = length(states_to_refine)
         frac = length(states_to_refine)/num_states
         @info "Refining $num_refine_states of $num_states ($frac) states"
@@ -101,33 +94,37 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
             end
         end
 
-        #! This is a hot mess, but it works.
-
-        # For each new state, 
         target_idxs_dict = Dict()
-        for new_state_idx in sort(collect(keys(new_state_dict)))
-            # target idxs to compute transition interval - zero otherwise!!
-            target_idxs = []
-            old_idx = new_state_dict[new_state_idx] 
-            succ_states = findall(x -> x > 0., P̂_old[old_idx, :])
+        smart_refine_flag = false
+        # ! TODO THIS DOES NOT WORK
+        if smart_refine_flag
+            for new_state_idx in keys(new_state_dict)
+                # target idxs to compute transition interval - zero otherwise!!
+                target_idxs = [] # Good
+                old_idx = new_state_dict[new_state_idx] # Good
+                succ_states = findall(x -> x>0., P̂_old[old_idx, 1:end-1]) ∩ findall(x -> x>0., P̂_old[old_idx, 1:end-1] - P̌_old[old_idx, 1:end-1]) #! Added a check for interval width, should not make a difference
+
+                for succ_state in succ_states 
             for succ_state in succ_states 
-                # Is the successor state a target of refinement? If so, add all those new state idxs to the transition targets
-                if succ_state in states_to_refine
-                    push!(target_idxs, old_state_dict[succ_state]...) 
-                # Otherwise, it is an unrefined state that may have a new index. Calculate this value here.
-                else
-                    # Calculate the new index of the unrefined state
-                    num_states_prior = sum(states_to_refine .< succ_state)
-                    new_unrefined_idx = succ_state - num_states_prior
-                    # @info "Old idx: $succ_state, New idx: $new_unrefined_idx, sum: $num_states_prior"
-                    push!(target_idxs, new_unrefined_idx)
+                for succ_state in succ_states 
+                    # Is the successor state a target of refinement? If so, add all those new state idxs to the transition targets
+                    if succ_state in states_to_refine
+                        push!(target_idxs, old_state_dict[succ_state]...) # Good 
+                    # Otherwise, it is an unrefined state that may have a new index. Calculate this value here.
+                    else
+                        # Calculate the new index of the unrefined state
+                        num_states_prior = sum(states_to_refine .< succ_state) # Good
+                        new_unrefined_idx = succ_state - num_states_prior # Good
+                        # @info "Old idx: $succ_state, New idx: $new_unrefined_idx, sum: $num_states_prior"
+                        push!(target_idxs, new_unrefined_idx) # Good
+                    end
                 end
+                if isempty(target_idxs)
+                    throw("Target index set is empty for state $new_state_idx. This should not happen.")
+                end
+                @assert new_state_idx ∉ keys(target_idxs_dict)
+                target_idxs_dict[new_state_idx] = sort(unique(target_idxs))
             end
-            if isempty(target_idxs)
-                throw("Target index set is empty for state $new_state_idx. This should not happen.")
-            end
-            @assert new_state_idx ∉ keys(target_idxs_dict)
-            target_idxs_dict[new_state_idx] = sort(unique(target_idxs))
         end
 
         # For all other states, only focus on transitions to states that were refined
