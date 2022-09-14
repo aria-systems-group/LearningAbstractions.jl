@@ -105,8 +105,6 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
                 succ_states = findall(x -> x>0., P̂_old[old_idx, 1:end-1]) ∩ findall(x -> x>0., P̂_old[old_idx, 1:end-1] - P̌_old[old_idx, 1:end-1]) #! Added a check for interval width, should not make a difference
 
                 for succ_state in succ_states 
-            for succ_state in succ_states 
-                for succ_state in succ_states 
                     # Is the successor state a target of refinement? If so, add all those new state idxs to the transition targets
                     if succ_state in states_to_refine
                         push!(target_idxs, old_state_dict[succ_state]...) # Good 
