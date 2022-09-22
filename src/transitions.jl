@@ -3,12 +3,6 @@
 
 Calculate the minimum distance between two convex sets. If 0., the sets intersect.
 """
-function distance(X::Polytope, Y::Polytope)
-    X_SA = polytope_to_SA(X)
-    Y_SA = polytope_to_SA(Y)
-    return distance(X_SA, Y_SA)
-end
-
 using EnhancedGJK
 import CoordinateTransformations: IdentityTransformation, Translation 
 

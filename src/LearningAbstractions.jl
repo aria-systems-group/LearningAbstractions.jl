@@ -11,7 +11,6 @@ using Distances
 import Distances: evaluate
 using StatsBase
 
-using Meshes
 using LinearAlgebra: norm, I, nullspace
 using SparseArrays
 using StaticArrays
