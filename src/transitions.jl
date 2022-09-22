@@ -1,11 +1,11 @@
+using EnhancedGJK
+import CoordinateTransformations: IdentityTransformation, Translation 
+
 """
     distance
 
 Calculate the minimum distance between two convex sets. If 0., the sets intersect.
 """
-using EnhancedGJK
-import CoordinateTransformations: IdentityTransformation, Translation 
-
 function distance(X::SMatrix, Y::SMatrix)
     n = size(X,1)
     dir = @SVector(rand(n)) .- 0.5
