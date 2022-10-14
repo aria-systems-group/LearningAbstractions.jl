@@ -167,6 +167,7 @@ end
 function separate_quadratic_program(H::Vector{Float64}, f::Matrix{Float64}, x_L, x_U, x_star_h::Vector{Float64}, vec_h::Vector{Float64}; C=0.)
 
     # By default, set the optimal points to the lower bounds
+    x_star_h .= x_L
     f_val = 0.    # Value at x*
     n = length(x_L) # Number of dimensions. 
     calc_f_part(ddf::Float64, df::Float64, point::Float64) = 0.5*ddf*point.^2 + df*point

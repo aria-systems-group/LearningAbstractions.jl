@@ -20,7 +20,19 @@ using Test
 
     gp = GP(x,y,mZero,kern,logObsNoise)       #Fit the GP
 
-    x_test = [-0.6; 0.3]
+    # Preallocated arrays for memory savings 
+    m_sub = gp.nobs
+    b_i_vec = Array{Float64}(undef, m_sub)
+    dx_L = zeros(gp.dim)
+    dx_U = zeros(gp.dim)
+    H = zeros(gp.dim)
+    f = zeros(1, gp.dim)
+    x_star_h = zeros(gp.dim)
+    vec_h = zeros(gp.dim)
+    bi_x_h = zeros(1,gp.dim)
+    α_h = zeros(gp.nobs)
+    K_h = zeros(gp.nobs,1)
+    mu_h = zeros(1,1)
 
     # Test compute_z_intervals
     x_t = gp.x[:,1]
@@ -31,7 +43,7 @@ using Test
     for i = 1:gp.nobs
         @views theta_vec_train_squared[i] = transpose(theta_vec) * (gp.x[:, i].^2)
     end   
-    z_interval = @views LearningAbstractions.GPBounding.compute_z_intervals(x_t, x_L, x_U, theta_vec, gp.dim)
+    z_interval = @views LearningAbstractions.GPBounding.compute_z_intervals(x_t, x_L, x_U, theta_vec, gp.dim, dx_L, dx_U)
     @test z_interval[1] ≈ 2.5678897035248642 && z_interval[2] ≈ 3.0407797802964613
 
     α_train = gp.alpha 
@@ -44,7 +56,7 @@ using Test
     @test b_i ≈ 0.4315114239506915
 
     # Test the whole components
-    H, f, C, a_i_sum = LearningAbstractions.GPBounding.calculate_components(α_train, theta_vec_train_squared, theta_vec, gp.x, x_L, x_U, gp.dim)
+    H, f, C, a_i_sum = LearningAbstractions.GPBounding.calculate_components(α_train, theta_vec_train_squared, theta_vec, gp.x, x_L, x_U, gp.dim, b_i_vec, dx_L, dx_U, H, f, bi_x_h)
 
     @test H ≈ [-0.026814730657513094, -0.026814730657513094]
     @test f ≈ [0.3859478820145441 -0.041233297215278686]
@@ -52,16 +64,17 @@ using Test
     @test a_i_sum ≈ -0.4985337971591764
 
     # Test separate_quadratic_program
-    x_mu_lb, f_val = LearningAbstractions.GPBounding.separate_quadratic_program(H, f, x_L, x_U)
-    @test x_mu_lb == [0.3, 0.5]
+    f_val = LearningAbstractions.GPBounding.separate_quadratic_program(H, f, x_L, x_U, x_star_h, vec_h)
+    @test x_star_h == [0.3, 0.5]
     @test f_val ≈ 0.09060921178494666 
 
     # Test μ prediction
-    μ, _ = predict_f(gp, hcat(x_mu_lb))
+    μ = LearningAbstractions.GPBounding.predict_μ(gp, hcat(x_star_h), K_h, mu_h)
     @test μ[1] ≈ 0.16165996767145518
 
     # Test split_region
-    new_regions = LearningAbstractions.GPBounding.split_region(x_L, x_U)
+    x_avg = zeros(gp.dim)
+    new_regions = LearningAbstractions.GPBounding.split_region!(x_L, x_U, x_avg)
     @test new_regions[1] == [[0.3, 0.3], [0.4, 0.4]]  
     @test new_regions[2] == [[0.4, 0.3], [0.5, 0.4]]  
     @test new_regions[3] == [[0.3, 0.4], [0.4, 0.5]]

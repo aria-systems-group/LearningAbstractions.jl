@@ -99,10 +99,6 @@ function compute_μ_bounds_bnb(gp, x_L, x_U; max_iterations=100, bound_epsilon=1
     # Preallocated arrays for memory savings 
     m_sub = gp.nobs
     b_i_vec = Array{Float64}(undef, m_sub)
-
-    # Preallocated arrays for memory savings 
-    m_sub = gp.nobs
-    b_i_vec = Array{Float64}(undef, m_sub)
     dx_L = zeros(gp.dim)
     dx_U = zeros(gp.dim)
     H = zeros(gp.dim)
