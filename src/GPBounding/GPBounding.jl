@@ -130,7 +130,7 @@ function compute_μ_bounds_bnb(gp, x_L, x_U; max_iterations=100, bound_epsilon=1
             if isnothing(split_regions)
                 split_regions = split_region!(extent[1], extent[2], x_avg) 
             else
-                split_region!(extent[1], extent[2], x_avg, new_regions=split_regions)
+                split_regions = split_region!(extent[1], extent[2], x_avg, new_regions=split_regions)
             end  
 
             for pair in split_regions
