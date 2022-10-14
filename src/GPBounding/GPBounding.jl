@@ -104,7 +104,7 @@ function compute_μ_bounds_bnb(gp, x_L, x_U; max_iterations=100, bound_epsilon=1
     H = zeros(gp.dim)
     f = zeros(1, gp.dim)
     x_star_h = zeros(gp.dim)
-    vec_h = zeros(gp.dim)
+    vec_h = zeros(2)
     bi_x_h = zeros(1,gp.dim)
     α_h = zeros(gp.nobs)
     K_h = zeros(gp.nobs,1)
