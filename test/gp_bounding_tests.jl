@@ -66,4 +66,10 @@ using Test
     @test new_regions[2] == [[0.4, 0.3], [0.5, 0.4]]  
     @test new_regions[3] == [[0.3, 0.4], [0.4, 0.5]]
     @test new_regions[4] == [[0.4, 0.4], [0.5, 0.5]]
+
+    # Test whole algorithm
+    x_best, lbest, ubest = LearningAbstractions.GPBounding.compute_μ_bounds_bnb(gp, x_L, x_U; max_iterations=2, bound_epsilon=1e-2, max_flag=false)
+    @test x_best[1:2] == [0.3, 0.3]
+    @test lbest ≈ 0.0980603639624964
+    @test ubest ≈ 0.10579836897133177
 end
