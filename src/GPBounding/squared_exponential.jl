@@ -164,7 +164,7 @@ function linear_lower_bound(α::Float64, z_i_L::Float64, z_i_U::Float64)
 end
 
 "A simple quadratic program solver."
-function separate_quadratic_program(H::Vector{Float64}, f::Matrix{Float64}, x_L::Vector{Float64}, x_U::Vector{Float64}, x_star_h::Vector{Float64}, vec_h::Vector{Float64}; C=0.)
+function separate_quadratic_program(H::Vector{Float64}, f::Matrix{Float64}, x_L, x_U, x_star_h::Vector{Float64}, vec_h::Vector{Float64}; C=0.)
 
     # By default, set the optimal points to the lower bounds
     f_val = 0.    # Value at x*
