@@ -88,7 +88,7 @@ function bound_extent_dim(gp, neg_gp, lbf, ubf; approximate_flag=false)
     return image_extent, σ_U_ub 
 end
 
-function compute_μ_bounds_bnb(gp, x_L, x_U; max_iterations=1, bound_epsilon=1e-2, max_flag=false)
+function compute_μ_bounds_bnb(gp, x_L, x_U; max_iterations=100, bound_epsilon=1e-2, max_flag=false)
     # By default, it calculates bounds on the minimum. 
     theta_vec_train_squared = zeros(gp.nobs);
     theta_vec = ones(gp.dim) * 1 ./ (2*gp.kernel.ℓ2)
