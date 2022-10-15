@@ -12,7 +12,6 @@ Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 EnhancedGJK = "3d39a06a-b57e-5769-b499-4d62b23c243f"
 GaussianProcesses = "891a1506-143c-57d2-908e-e1f8e92e6de9"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
-# Meshes = "eacbb407-ea5a-433e-ab97-5258b1ca43fa"
 NearestNeighbors = "b8a86587-4115-5ab1-83bc-aa920d37bbce"
 ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
@@ -23,6 +22,7 @@ StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
 
 [compat]
+Distances = "0.10"
 julia = "1.7"
 
 [extras]
