@@ -43,6 +43,7 @@ using Test
     for i = 1:gp.nobs
         @views theta_vec_train_squared[i] = transpose(theta_vec) * (gp.x[:, i].^2)
     end   
+    
     z_interval = @views LearningAbstractions.GPBounding.compute_z_intervals(x_t, x_L, x_U, theta_vec, gp.dim, dx_L, dx_U)
     @test z_interval[1] ≈ 16.7870941340354 && z_interval[2] ≈ 18.346537704280646
 
