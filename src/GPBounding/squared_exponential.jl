@@ -1,23 +1,20 @@
 "Computes the lower bound of the posterior mean function of a Gaussian process in an interval."
-function compute_μ_lower_bound(gp, x_L, x_U, theta_vec_train_squared, theta_vec; upper_flag=false)
+function compute_μ_lower_bound(gp::GPE, x_L, x_U, theta_vec_train_squared::Vector{Float64}, theta_vec::Vector{Float64}, 
+                               b_i_vec::Vector{Float64}, dx_L::Vector{Float64}, dx_U::Vector{Float64}, H::Vector{Float64}, f::Matrix{Float64}, x_star_h::Vector{Float64}, vec_h::Vector{Float64}, bi_x_h::Matrix{Float64}, α_h::Vector{Float64},
+                               K_h, mu_h;
+                               upper_flag=false)
     # Set minmax_factor to -1 if maximizing
     minmax_factor = upper_flag ? -1. : 1.
-    # global variables: training_data, theta_vec_train_squared
-    @views x_train = gp.x # Confirmed
-    m = gp.nobs # Confirmed
+    x_train = gp.x # Confirmed
     n = gp.dim # Dimension of input
-    α_train = gp.alpha 
+    α_h .= gp.alpha .* gp.kernel.σ2
     
-    sigma_prior = gp.kernel.σ2 # confirmed
-    α_train *= sigma_prior # confirmed
-    
-    # Get the theta vector
-    H, f, C, a_i_sum = calculate_components(α_train, theta_vec_train_squared, theta_vec, x_train, x_L, x_U, n)
-    x_mu_lb, f_val = separate_quadratic_program(H, f, x_L, x_U)
-    x_mu_lb = hcat(x_mu_lb) # TODO: get around hcat?
+    H, f, C, a_i_sum = calculate_components(α_h, theta_vec_train_squared, theta_vec, x_train, x_L, x_U, n, b_i_vec, dx_L, dx_U, H, f, bi_x_h)
+    f_val = separate_quadratic_program(H, f, x_L, x_U, x_star_h, vec_h)
+    x_mu_lb = hcat(x_star_h) # TODO: get around hcat?
     
     lb = minmax_factor*(f_val + C + a_i_sum)
-    ub, _ = predict_f(gp, x_mu_lb)  # TODO: This is very slow!!!! 1/2 a millesecond. Maybe not too slow.
+    ub = predict_μ(gp, x_mu_lb, K_h, mu_h) 
     ub = ub[1]*minmax_factor
     
     if upper_flag
@@ -27,90 +24,30 @@ function compute_μ_lower_bound(gp, x_L, x_U, theta_vec_train_squared, theta_vec
     end
 end
 
-function calculate_components(α_train, theta_vec_train_squared, theta_vec, x_train, x_L, x_U, n)
-    # For each training point
-    # could replace z with matrix
+
+function calculate_components(α_train::Vector{Float64}, theta_vec_train_squared::Vector{Float64}, theta_vec::Vector{Float64}, x_train::Matrix{Float64}, x_L, x_U, n::Int, 
+                              b_i_vec::Vector{Float64}, dx_L::Vector{Float64}, dx_U::Vector{Float64}, H::Vector{Float64}, f::Matrix{Float64}, bi_x_h::Matrix{Float64})
     a_i_sum = 0. 
-    # b_i_vec = zeros((1,length(α_train)))
-    b_i_vec = Array{Float64}(undef, length(α_train))
+    b_i_vec_sum = 0.
     C = 0.
-    for idx=1:length(α_train)
-        z_interval = @views compute_z_intervals(x_train[:, idx], x_L, x_U, theta_vec, n)
-        a_i, b_i = linear_lower_bound(α_train[idx], z_interval[1], z_interval[2]) # Confirmed!
+    
+    length(α_train)
+    for idx=1:length(α_train)  
+        @views z_i_L, z_i_U = compute_z_intervals(x_train[:, idx], x_L, x_U, theta_vec, n, dx_L, dx_U)           
+        a_i, b_i = linear_lower_bound(α_train[idx], z_i_L, z_i_U ) # Confirmed!     
         b_i_vec[idx] = b_i
-        a_i_sum += a_i
-        C += b_i * theta_vec_train_squared[idx] 
+        b_i_vec_sum += b_i
+        a_i_sum += a_i 
+        C += b_i * theta_vec_train_squared[idx]
     end
 
     # Hessian object, with respect to each "flex" point
-    H = 2*sum(b_i_vec)*theta_vec   # nx1 vector
-    f = -2*theta_vec' .* (b_i_vec'*x_train')
+    H .= 2*b_i_vec_sum.*theta_vec   # nx1 vector
+    mul!(bi_x_h, b_i_vec', x_train')
+    @tullio f[i] = -2*theta_vec[i] .* bi_x_h[i]  
 
     return H, f, C, a_i_sum
 end
-
-function split_region(x_L, x_U)
-
-    n = length(x_L)
-    x_avg = (x_L + x_U)/2
-    # if n == 1
-    #     return [(x_L, x_avg), (x_avg, x_U)]
-    # end
-    
-    # if n == 2
-    #     return [(x_L, x_avg), (x_avg, x_U),
-    #             ([x_avg[1], x_L[2]], [x_U[1], x_avg[2]]),
-    #             ([x_L[1], x_avg[2]], [x_avg[1], x_U[2]])]
-    # end
-
-    # pairs = []
-    # for i=1:n
-    #     push!(pairs, [[x_L[i], x_avg[i]], [x_avg[i], x_U[i]]])
-    # end
-
-    # if n==1
-    #     return pairs
-    # end
-
-    lowers = []
-    uppers = []
-    for i=1:n
-        push!(lowers, [x_L[i], x_avg[i]])
-        push!(uppers, [x_avg[i], x_U[i]])
-    end
-    # lower_ranges = collect(Base.product(lowers...))
-    # upper_ranges = collect(Base.product(uppers...))
-
-    return [[[lower...], [upper...]] for (lower, upper) in zip(Base.product(lowers...), Base.product(uppers...))]
-end
-
-# Don't know if this will even help!
-# function split_region!(pairs::Vector{Any}, x_L, x_U)
-
-#     n = length(x_L)
-#     # TODO: Does not work in general? Is this still true>
-#     x_avg = (x_L + x_U)/2
-
-#     num_regions = 2^n
-
-#     # pairs = []
-#     # for i=1:n
-#     #     pairs = [[x_L[i], x_avg[i]], [x_avg[i], x_U[i]]]
-#     # end
-   
-    
-#     lowers = [[x_L[i], x_avg[i]] for i=1:n]
-#     uppers = [[x_avg[i], x_U[i]] for i=1:n]
-#     # for i=1:n # For each dim
-#     #     lowers[i] = [x_L[i], x_avg[i]]
-#     #     # push!(lowers, [x_L[i], x_avg[i]])
-#     #     # push!(uppers, [x_avg[i], x_U[i]])
-#     # end
-#     lower_ranges = collect(Base.product(lowers...))
-#     upper_ranges = collect(Base.product(uppers...))
-
-#     return [[[lower...], [upper...]] for (lower, upper) in zip(lower_ranges, upper_ranges)]
-# end
 
 "Computes the upper bound of the posterior covariance function of a Gaussian process in an interval."
 function compute_σ_upper_bound(gp, x_L, x_U, R_inv)
@@ -190,66 +127,66 @@ function compute_σ_upper_bound(gp, x_L, x_U, R_inv)
     return x_σ_ub, sqrt(σ2_lb[1]), σ_ub
 end
 
-function compute_z_intervals(x_i, x_L, x_U, theta_vec, n)
+function compute_z_intervals(x_i, x_L, x_U, theta_vec::Vector{Float64}, n::Int, dx_L::Vector{Float64}, dx_U::Vector{Float64})
     z_i_L = 0.
-    dx_L = (x_i - x_L).^2
-    dx_U = (x_i - x_U).^2
-    for idx=1:n
+    dx_L .= (x_i .- x_L).^2       # TODO: This still takes much time, improve further
+    dx_U .= (x_i .- x_U).^2
+    @inbounds for idx=1:n
         if x_L[idx] > x_i[idx] || x_i[idx] > x_U[idx]
-            z_i_L += theta_vec[idx] * min(dx_L[idx], dx_U[idx]) 
+            minval = dx_L[idx] < dx_U[idx] ? dx_L[idx] : dx_U[idx] 
+            z_i_L += theta_vec[idx] * minval
         end
     end
+
+    # TODO: Review what this max does, can we simplify it somehow, like put it in the loop above?
     z_i_U = transpose(theta_vec) * max(dx_L, dx_U) # Vector with largest component 
     return z_i_L, z_i_U
 end
 
-function linear_lower_bound(α, z_i_L, z_i_U)
+function linear_lower_bound(α::Float64, z_i_L::Float64, z_i_U::Float64)
  # Now compute the linear under approximation (inlined for computational reasons)
     if α >= 0.
         z_i_avg = (z_i_L + z_i_U)/2
-        # Where does this come from?
-        a_i = (1 + z_i_avg)*α*exp(-z_i_avg)
-        b_i = -α*exp(-z_i_avg)
+        e_avg = exp(-z_i_avg)
+        αe = e_avg*α
+        a_i = (1 + z_i_avg)*αe
+        b_i = -αe
     else
-        # This looks more like a slope equation
-        # dz = z_i_L - z_i_U 
-        a_i = α*(exp(-z_i_L) - z_i_L*(exp(-z_i_L) - exp(-z_i_U))/(z_i_L - z_i_U ) )
-        b_i = α*(exp(-z_i_L) - exp(-z_i_U))/(z_i_L - z_i_U )
+        dz = z_i_L - z_i_U 
+        ezL = exp(-z_i_L) 
+        ezU = exp(-z_i_U) 
+        de = ezL - ezU
+        b_i = α*(de)/(dz)
+        a_i = α*ezL - z_i_L*b_i
     end
     
     return a_i, b_i
 end
 
 "A simple quadratic program solver."
-function separate_quadratic_program(H, f, x_L, x_U; C=0.)
+function separate_quadratic_program(H::Vector{Float64}, f::Matrix{Float64}, x_L, x_U, x_star_h::Vector{Float64}, vec_h::Vector{Float64}; C=0.)
 
     # By default, set the optimal points to the lower bounds
-    x_star = Array(x_L)   # Same size as number of dimensions
+    x_star_h .= x_L
     f_val = 0.    # Value at x*
     n = length(x_L) # Number of dimensions. 
-    calc_f_part(ddf, df, point) = 0.5*ddf*point.^2 + df*point
+    calc_f_part(ddf::Float64, df::Float64, point::Float64) = 0.5*ddf*point.^2 + df*point
     
     for idx=1:n
-        # This is odd notation. shouldn't the lower bound always be less than upper?
-#         if x_L[idx] < x_U[idx]
         x_critic = -f[idx]/H[idx]
-
         if H[idx] >= 0 && (x_critic <= x_U[idx]) && (x_critic >= x_L[idx])
-            x_star[idx] = x_critic
+            x_star_h[idx] = x_critic
             f_val_partial = calc_f_part(H[idx], f[idx], x_critic)
         else
-            vec = [calc_f_part(H[idx], f[idx], x_L[idx]), 
-                   calc_f_part(H[idx], f[idx], x_U[idx])]
-            f_val_partial = minimum(vec)
-            if f_val_partial == vec[2]
-                x_star[idx] = x_U[idx]
+            vec_h[1] = calc_f_part(H[idx], f[idx], x_L[idx])
+            vec_h[2] = calc_f_part(H[idx], f[idx], x_U[idx])   
+            f_val_partial = minimum(vec_h)
+            if f_val_partial == vec_h[2]
+                x_star_h[idx] = x_U[idx]
             end
         end
-#         else
-#             f_val_partial = calc_f_part(H[idx], f[idx], x_L[idx])
-#         end
         f_val += f_val_partial
     end
     
-    return x_star, f_val + C
+    return f_val + C
 end

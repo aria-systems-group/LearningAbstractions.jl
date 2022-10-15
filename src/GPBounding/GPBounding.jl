@@ -5,7 +5,7 @@ using LinearAlgebra
 using Random
 using Distributions
 using StaticArrays
-
+using Tullio
 include("squared_exponential.jl")
 
 export bound_image, bound_images
@@ -90,39 +90,51 @@ end
 
 function compute_μ_bounds_bnb(gp, x_L, x_U; max_iterations=100, bound_epsilon=1e-2, max_flag=false)
     # By default, it calculates bounds on the minimum. 
-    # Calculate this vector outside of the loop to save computation.
     theta_vec_train_squared = zeros(gp.nobs);
     theta_vec = ones(gp.dim) * 1 ./ (2*gp.kernel.ℓ2)
     for i = 1:gp.nobs
         @views theta_vec_train_squared[i] = transpose(theta_vec) * (gp.x[:, i].^2)
     end   
+
+    # Preallocated arrays for memory savings 
+    m_sub = gp.nobs
+    b_i_vec = Array{Float64}(undef, m_sub)
+    dx_L = zeros(gp.dim)
+    dx_U = zeros(gp.dim)
+    H = zeros(gp.dim)
+    f = zeros(1, gp.dim)
+    x_star_h = zeros(gp.dim)
+    vec_h = zeros(2)
+    bi_x_h = zeros(1,gp.dim)
+    α_h = zeros(gp.nobs)
+    K_h = zeros(gp.nobs,1)
+    mu_h = zeros(1,1)
     
-    x_best, lbest, ubest = compute_μ_lower_bound(gp, x_L, x_U, theta_vec_train_squared, theta_vec, upper_flag=max_flag)
+    x_best, lbest, ubest = compute_μ_lower_bound(gp, x_L, x_U, theta_vec_train_squared, theta_vec, b_i_vec, dx_L, dx_U, H, f, x_star_h, vec_h, bi_x_h, α_h, K_h, mu_h, upper_flag=max_flag)
     if max_flag
         temp = lbest
         lbest = -ubest
         ubest = -temp
     end
     
-    # candidates = [[(x_L, x_U), lbest, ubest]]
     candidates = [(x_L, x_U)]
     iterations = 0
-    ct = 0
-    # lb_list = []
-    n_cands = 10
+
+    split_regions = nothing
+    x_avg = zeros(gp.dim)
+
     while !isempty(candidates) && iterations < max_iterations
         new_candidates = []
         for extent in candidates
             
-            # extent = candidate[1]
-            # lb_can = candidate[2]
-            # ub_can = candidate[3]
-            bound_pairs = split_region(extent[1], extent[2]) #   0.000020 seconds (29 allocations: 1.797 KiB)
-            
-            for pair in bound_pairs
-                # Following: 0.001435 seconds (11.84 k allocations: 1.041 MiB)
-                x_lb1, lb1, ub1 = compute_μ_lower_bound(gp, pair[1], pair[2], theta_vec_train_squared, theta_vec, upper_flag=max_flag)
-                ct += 1
+            if isnothing(split_regions)
+                split_regions = split_region!(extent[1], extent[2], x_avg) 
+            else
+                split_regions = split_region!(extent[1], extent[2], x_avg, new_regions=split_regions)
+            end  
+
+            for pair in split_regions
+                x_lb1, lb1, ub1 = compute_μ_lower_bound(gp, pair[1], pair[2], theta_vec_train_squared, theta_vec, b_i_vec, dx_L, dx_U, H, f, x_star_h, vec_h, bi_x_h, α_h, K_h, mu_h, upper_flag=max_flag)
                 if max_flag
                     temp = lb1
                     lb1 = -ub1
@@ -133,10 +145,8 @@ function compute_μ_bounds_bnb(gp, x_L, x_U; max_iterations=100, bound_epsilon=1
                     ubest = ub1
                     lbest = lb1
                     x_best = x_lb1
-                    # push!(new_candidates, hcat([pair, lb1, ub1])) 
                     push!(new_candidates, pair)
                 elseif lb1 < ubest   
-                    # push!(new_candidates, hcat([pair, lb1, ub1]))    
                     push!(new_candidates, pair)
                 end
                 
@@ -155,6 +165,7 @@ function compute_μ_bounds_bnb(gp, x_L, x_U; max_iterations=100, bound_epsilon=1
         lbest = -ubest
         ubest = -temp
     end
+
     return x_best, lbest, ubest 
 end
 
@@ -278,6 +289,34 @@ function compute_σ_ub_bounds_from_gp(gp, x_L, x_U; ub=1.0)
     σ_gp = prepare_σ_gp(gp, x_L, x_U, ub)
     res_test = GPBounding.compute_μ_bounds_bnb(σ_gp, x_L, x_U, max_flag=true, max_iterations=4)
     return res_test[1], 0., res_test[3][1]+ub
+end
+
+function split_region!(x_L, x_U, x_avg; new_regions=nothing)
+    n = length(x_L)
+    x_avg .= (x_L .+ x_U)/2
+
+    lowers = [[x_L[i], x_avg[i]] for i=1:n]
+    uppers = [[x_avg[i], x_U[i]] for i=1:n]
+
+    if isnothing(new_regions)
+        new_regions = [[[lower...], [upper...]] for (lower, upper) in zip(Base.product(lowers...), Base.product(uppers...))] 
+    else
+        new_regions .= [[[lower...], [upper...]] for (lower, upper) in zip(Base.product(lowers...), Base.product(uppers...))]  
+    end
+
+    return new_regions
+end
+
+# ! Can improve further here
+function predict_μ(gp, xpred, K_h, mu_h)
+    xtrain = gp.x
+    kernel = gp.kernel
+    alpha = gp.alpha
+
+    GaussianProcesses.cov!(K_h, kernel, xtrain, xpred)
+    # ! Mean zero specialty
+    mul!(mu_h, K_h', alpha)
+return mu_h  
 end
 
 end # module
