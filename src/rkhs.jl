@@ -51,7 +51,31 @@ function chowdhury_rkhs_prob(σ, ϵ, γ_bd, B, logNoise, post_scale_factor)
 end
 
 function chowdhury_rkhs_prob_vector(gp_rkhs_info, σ_bounds, ϵ; local_RKHS_bound=nothing, local_gp_metadata=nothing)
-	p_rkhs = 1.
+	p_rkhs = zeros(length(ϵ))
+	
+	for i=1:length(σ_bounds)
+		# This calculates the probability of the dynamics being β(δ)*σ close.
+		RKHS_bound = isnothing(local_RKHS_bound) ? gp_rkhs_info.RKHS_norm_bounds[i] : local_RKHS_bound[i]
+
+		if !isnothing(local_gp_metadata)
+			nobs = local_gp_metadata[3]
+			σ_v2 = (1 + 2/(nobs))
+			γ_bound =  0.5*nobs*log(1 + 1/σ_v2*local_gp_metadata[1][i]) 
+		else
+			γ_bound = gp_rkhs_info.γ_bounds[i]	
+		end
+
+		p_rkhs[i] = 1. - chowdhury_rkhs_prob(σ_bounds[i], ϵ[i], 
+										   gp_rkhs_info.γ_bounds[i], 
+										   RKHS_bound, 
+										   gp_rkhs_info.logNoise[i], 
+										   gp_rkhs_info.post_scale_factors[i])
+	end
+	return p_rkhs
+end
+
+function chowdhury_rkhs_prob_vector_single(gp_rkhs_info, σ_bounds, ϵ; local_RKHS_bound=nothing, local_gp_metadata=nothing)
+	p_rkhs = 1.0
 	
 	for i=1:length(σ_bounds)
 		# This calculates the probability of the dynamics being β(δ)*σ close.

@@ -146,11 +146,18 @@ function fast_check(mean_pt, mean_target, ϵ_crit, image_radius, set_radius)
 end
 
 function transition_inverval(X,Y; gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_manual=nothing, local_RKHS_bound=nothing, local_gp_metadata=nothing)
+
     dis = distance(X, Y)
+
+    dis_comps = zeros(size(X,1), 2)
+    dis_fcn(X, Y, dis_comps)
+    # > Here, add a modification for getting the min and max distances of each component. If all distances are zero, just use the trivial upper bound for now. 
+    # > In fact, I could use the general code from before.
     #===
     Full or Partial Intersection
     ===#
     if (dis <= 1e-4)
+        # ! Improve the partial intersection case
         p̂ = 1.              # UB result for full + partial intersection
         containment_flag, min_distance = containment_check(X, Y)
         #===
@@ -158,7 +165,7 @@ function transition_inverval(X,Y; gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_ma
         ===#
         if containment_flag     
             if !isnothing(gp_rkhs_info)
-                p̌ = chowdhury_rkhs_prob_vector(gp_rkhs_info, σ_bounds, min_distance,local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata) 
+                p̌ = chowdhury_rkhs_prob_vector_single(gp_rkhs_info, σ_bounds, min_distance,local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata) 
             else
                 p̌ = 1.          
             end
@@ -170,13 +177,33 @@ function transition_inverval(X,Y; gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_ma
     ===#
     else
         if !isnothing(gp_rkhs_info)
-            p̂ = 1 - chowdhury_rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis, local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata)
+            # ! Unverified
+            p_leq_lb = chowdhury_rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,1], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata)
+            p_leq_ub = chowdhury_rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,2], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata)
+            p̂ = prod(p_leq_ub) - prod(p_leq_lb)
         else
             p̂ = 0. 
         end
         p̌ = 0.
     end
     return [p̌, p̂]
+end
+
+function dis_fcn!(res, X, Y)
+    for i=1:size(X,1)
+        res[i,1] = minimum(abs.(X[i,:] .- Y[i,:]) ∪ abs.(X[i,:] .- Y[i, end:-1:1]))
+        res[i,2] = maximum(abs.(X[i,:] .- Y[i,:]) ∪ abs.(X[i,:] .- Y[i, end:-1:1]))
+    end
+end
+
+function abs_cdf(pdf, val)
+    return cdf(pdf, val) - cdf(pdf, -val)
+end
+
+function abs_cdf(pdf, val_lb, val_ub)
+    p_ub = abs_cdf(pdf, val_ub)
+    p_lb = abs_cdf(pdf, val_lb)
+    return p_ub - p_lb
 end
 
 function containment_check(shape1,shape2, axes=nothing)
@@ -252,7 +279,7 @@ function calculate_ϵ_crit(gp_info, σ_bounds; local_RKHS_bound=nothing)
     ϵ = 0.01
     P = 0.0
     while P != 1.0
-        P = chowdhury_rkhs_prob_vector(gp_info, σ_bounds, ϵ, local_RKHS_bound=local_RKHS_bound) 
+        P = chowdhury_rkhs_prob_vector_single(gp_info, σ_bounds, ϵ, local_RKHS_bound=local_RKHS_bound) 
         ϵ *= 1.5 
     end
     return ϵ
