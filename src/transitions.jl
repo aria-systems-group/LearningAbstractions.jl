@@ -182,12 +182,14 @@ function transition_inverval(X,Y; gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_ma
             # These return the probabilities of LEQ -- take the difference 
             p_leq_lb = chowdhury_rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,1], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata)
             p_leq_ub = chowdhury_rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,2], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata)
-            p̂ = (1.0 - prod(p_leq_lb)) - (1.0 - prod(p_leq_ub)) 
+            p_interval = (1.0 .- p_leq_lb) - (1.0 .- p_leq_ub)
+            p̂ = prod(p_interval) 
         else
             p̂ = 0. 
         end
         p̌ = 0.
     end
+    @assert p̌ <= p̂
     return [p̌, p̂]
 end
 
