@@ -84,6 +84,8 @@ function generate_pairwise_transitions(states, images; gp_rkhs_info=nothing, σ_
 
     p = Progress(num_states^2, desc="Computing transition intervals...", dt=status_bar_period)
 
+    res = zeros(2)
+
     for i in 1:num_states 
         image = images[i]
         image_radius = norm(image[:,1] - image[:,end-1])/2
@@ -112,10 +114,10 @@ function generate_pairwise_transitions(states, images; gp_rkhs_info=nothing, σ_
 
         # TODO: This is a first whack at doing this in a parallel way - not the best way to do it!
         lk = ReentrantLock()
-        Threads.@threads for j in idxs_to_check
+        for j in idxs_to_check
             statep_sa = states[j]
             if fast_check(mean_image, all_state_means[j], ϵ_crit, image_radius, state_radius) 
-                res = transition_inverval(image, statep_sa, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds, ϵ_manual=ϵ_manual, local_RKHS_bound=RKHS_bound_local, local_gp_metadata=local_gp_metadata) 
+                transition_inverval(image, statep_sa, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds, ϵ_manual=ϵ_manual, local_RKHS_bound=RKHS_bound_local, local_gp_metadata=local_gp_metadata, res=res) 
                 lock(lk) do 
                     P̌[j,i] = res[1]
                 end 
@@ -145,7 +147,7 @@ function fast_check(mean_pt, mean_target, ϵ_crit, image_radius, set_radius)
     return flag
 end
 
-function transition_inverval(X,Y; gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_manual=nothing, local_RKHS_bound=nothing, local_gp_metadata=nothing)
+function transition_inverval(X,Y; gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_manual=nothing, local_RKHS_bound=nothing, local_gp_metadata=nothing, res=nothing)
     dis = distance(X, Y)
     #===
     Full or Partial Intersection
@@ -176,7 +178,14 @@ function transition_inverval(X,Y; gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_ma
         end
         p̌ = 0.
     end
-    return [p̌, p̂]
+
+    if isnothing(res)
+        res = [p̌, p̂]
+    else
+        res .= [p̌, p̂] 
+    end
+
+    return res
 end
 
 function containment_check(shape1,shape2, axes=nothing)
