@@ -147,10 +147,11 @@ end
 
 function transition_inverval(X,Y; gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_manual=nothing, local_RKHS_bound=nothing, local_gp_metadata=nothing)
 
+    # ! Eventially don't need this
     dis = distance(X, Y)
 
     dis_comps = zeros(size(X,1), 2)
-    dis_fcn(X, Y, dis_comps)
+    dis_fcn!(dis_comps, X, Y)
     # > Here, add a modification for getting the min and max distances of each component. If all distances are zero, just use the trivial upper bound for now. 
     # > In fact, I could use the general code from before.
     #===
