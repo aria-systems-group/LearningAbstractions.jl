@@ -51,9 +51,7 @@ function learn_abstraction(config_file::String)
 	input_data = data_dict[:input]
 	output_data = data_dict[:output]
 
-	# results_dir = config["results_directory"]
-	filetag = split(basename(config_file), ".")[1]
-	results_dir = "./results/$filetag"
+	results_dir = config["results_directory"]
 	base_results_dir = "$results_dir/base"
 	mkpath(base_results_dir)
 	state_filename = "$base_results_dir/states.bson"

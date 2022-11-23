@@ -19,7 +19,6 @@ function create_imdp_labels(labels_fn, imdp, all_state_means)
     end
     imdp.labels[length(imdp.states)] = labels_fn(nothing, unsafe=true)
 end
-
 """
     general_label_fcn
 
@@ -85,17 +84,17 @@ function load_environment_labels(environemnt_filename::String)
     environmenet_data = TOML.parse(f)
     close(f)
 
-    labels = environmenet_data["labels"]
+    regions = environmenet_data["regions"]
     labels_dict = Dict()
-    for label in keys(labels)
-        labels_dict[label] = []
-        for geometry in labels[label]
-            push!(labels_dict[label], geometry)
+    for region in regions
+        labels_dict[region["label"]] = []
+        for geometry in region["regions"]
+            push!(labels_dict[region["label"]], geometry)
         end
     end
 
-    default_label = ""
-    unsafe_label = "unsafe"
+    default_label = environmenet_data["default_label"] 
+    unsafe_label = environmenet_data["unsafe_label"] 
     label_fcn = (x; unsafe=false) -> general_label_fcn(x, default_label, unsafe_label, labels_dict, unsafe=unsafe, unsafe_default=false)
     return label_fcn, labels_dict
 end
