@@ -95,16 +95,18 @@ function learn_abstraction(config_file::String)
 		gps = LearningAbstractions.condition_gps(input_data, output_data, data_subset=full_gp_subset)
 		diameter_domain = sqrt(sum((L-U).^2))
 		sup_f = U + lipschitz_bound*diameter_domain
-		gp_info = LearningAbstractions.create_gp_info(gps, σ_noise, diameter_domain, sup_f)
-		save_gps(Dict(:gps => gps, :info => gp_info), gps_filename)
+		gp_info = LearningAbstractions.create_gp_info(gps, σ_noise, diameter_domain, sup_f, process_noise=process_noise_flag)
+		gp_info_dict = create_gp_info_dict(gp_info)
+		save_gps(Dict(:gps => gps, :info => gp_info_dict), gps_filename)
 		P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_state_σ_bounds, local_gp_metadata=local_gp_metadata)
 	else
 		# TODO: using subset of data to get RKHS-related constants is inelegant
 		gps = LearningAbstractions.condition_gps(input_data, output_data, data_subset=full_gp_subset)
 		diameter_domain = sqrt(sum((L-U).^2))
 		sup_f = U + lipschitz_bound*diameter_domain
-		gp_info = LearningAbstractions.create_gp_info(gps, σ_noise, diameter_domain, sup_f)
-		save_gps(Dict(:gps => gps, :info => gp_info), gps_filename)
+		gp_info = LearningAbstractions.create_gp_info(gps, σ_noise, diameter_domain, sup_f, process_noise=process_noise_flag)
+		gp_info_dict = create_gp_info_dict(gp_info)
+		save_gps(Dict(:gps => gps, :info => gp_info_dict), gps_filename)
 
 		n_states = length(grid)
 		all_states_SA = Vector{SMatrix}(undef, n_states)

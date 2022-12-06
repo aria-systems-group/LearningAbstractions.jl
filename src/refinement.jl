@@ -25,8 +25,7 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
     domain_type = config["workspace"]["domain_type"]	
     results_dir = config["results_directory"]
 
-    filetag = split(basename(config_filename), ".")[1]
-	results_dir = "./results/$filetag"
+    results_dir = config["results_directory"]
 	base_results_dir = "$results_dir/base"
 	# state_filename = "$results_dir/states.bson"
 	# imdp_filename = "$results_dir/imdp.bson"

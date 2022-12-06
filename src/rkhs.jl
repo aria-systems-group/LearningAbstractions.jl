@@ -97,3 +97,17 @@ function chowdhury_rkhs_prob_vector_single(gp_rkhs_info, σ_bounds, ϵ; local_RK
 	end
 	return p_rkhs
 end
+
+function create_gp_info_dict(gp_info::GPRelatedInformation)
+	gp_info_dict = Dict(
+		"γ_bounds" => gp_info.γ_bounds,
+		"RKHS_norm_bounds" => gp_info.RKHS_norm_bounds,
+		"logNoise" => gp_info.logNoise,
+		"post_scale_factors" => gp_info.post_scale_factors,
+		"Kinv" => gp_info.Kinv,
+		"f_sup" => gp_info.f_sup,
+		"measurement_noise" => gp_info.measurement_noise,
+		"process_noise" => gp_info.process_noise
+	)
+	return gp_info_dict
+end
