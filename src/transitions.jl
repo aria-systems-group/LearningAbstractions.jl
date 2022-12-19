@@ -27,6 +27,22 @@ function distance(X::SMatrix, Y::SMatrix)
     return minimum_distance(X, Y, dir, atol=1e-6)
 end
 
+"""
+    distance
+
+Compute the distance between a point and a convex set. If 0., the sets intersect.
+"""
+function distance(x::SVector, Y::SMatrix)
+    # Intersects? 
+    total_dis = 0.0
+    xinq = [Y[i,1]<=x[i]<= Y[i,end-1] for i in eachindex(x)]
+    if sum(xinq) != length(x)
+        dis = [xinq[i] ? 0.0 : min(abs(Y[i,1]-x[i]), abs(Y[i,end-1]-x[i])) for i in eachindex(x)]
+        total_dis = sqrt(sum([dis[i]^2 for i in eachindex(dis)])) 
+    end
+    return total_dis
+end
+
 function generate_all_transitions(grid, images, full_set; gp_rkhs_info=nothing, σ_bounds_all=nothing, ϵ_manual=nothing, local_gp_metadata=nothing, P̌_hot=nothing, P̂_hot=nothing, target_idxs_dict=nothing)
     num_states = length(grid) + 1 # All states plus the unsafe state!
     P̌ = spzeros(num_states, num_states)
@@ -114,7 +130,7 @@ function generate_pairwise_transitions(states, images; gp_rkhs_info=nothing, σ_
         lk = ReentrantLock()
         Threads.@threads for j in idxs_to_check
             statep_sa = states[j]
-            if fast_check(mean_image, all_state_means[j], ϵ_crit, image_radius, state_radius) 
+            # if true || fast_check(mean_image, all_state_means[j], ϵ_crit, image_radius, state_radius) 
                 res = transition_inverval(image, statep_sa, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds, ϵ_manual=ϵ_manual, local_RKHS_bound=RKHS_bound_local, local_gp_metadata=local_gp_metadata) 
                 lock(lk) do 
                     P̌[j,i] = res[1]
@@ -122,7 +138,7 @@ function generate_pairwise_transitions(states, images; gp_rkhs_info=nothing, σ_
                 lock(lk) do 
                     P̂[j,i] = res[2]
                 end 
-            else
+            # else
                 fast_checks += 1
             end
             next!(p)
@@ -149,6 +165,17 @@ function transition_inverval(X,Y; gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_ma
 
     # ! Eventially don't need this
     dis = distance(X, Y)
+
+    if typeof(gp_rkhs_info) == Dict{String, Any}
+        gp_rkhs_info = GPRelatedInformation(gp_rkhs_info["γ_bounds"],
+                            gp_rkhs_info["RKHS_norm_bounds"],	
+                            gp_rkhs_info["logNoise"],	
+                            gp_rkhs_info["post_scale_factors"],	
+                            gp_rkhs_info["Kinv"],	
+                            gp_rkhs_info["f_sup"],	
+                            gp_rkhs_info["measurement_noise"],	
+                            gp_rkhs_info["process_noise"],	)
+    end
 
     dis_comps = zeros(size(X,1), 2)
     dis_fcn!(dis_comps, X, Y)
@@ -193,10 +220,17 @@ function transition_inverval(X,Y; gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_ma
     return [p̌, p̂]
 end
 
-function dis_fcn!(res, X, Y)
+function dis_fcn!(res, X::SMatrix, Y::SMatrix)
     for i=1:size(X,1)
         res[i,1] = minimum(abs.(X[i,:] .- Y[i,:]) ∪ abs.(X[i,:] .- Y[i, end:-1:1]))
         res[i,2] = maximum(abs.(X[i,:] .- Y[i,:]) ∪ abs.(X[i,:] .- Y[i, end:-1:1]))
+    end
+end
+
+function dis_fcn!(res, X::SVector, Y::SMatrix)
+    for i in eachindex(X)
+        res[i,1] = minimum(abs.(X[i] .- Y[i,:]) ∪ abs.(X[i] .- Y[i, end:-1:1]))
+        res[i,2] = maximum(abs.(X[i] .- Y[i,:]) ∪ abs.(X[i] .- Y[i, end:-1:1]))
     end
 end
 
@@ -210,7 +244,7 @@ function abs_cdf(pdf, val_lb, val_ub)
     return p_ub - p_lb
 end
 
-function containment_check(shape1,shape2, axes=nothing)
+function containment_check(shape1::SMatrix,shape2::SMatrix, axes=nothing)
     int_result = false 
     min_distance = Inf
     n_dims = size(shape1,1)
@@ -238,6 +272,16 @@ function containment_check(shape1,shape2, axes=nothing)
     end
     return int_result, min_distance
 
+end
+
+function containment_check(x::SVector, Y::SMatrix; axes=nothing)
+    min_distance = Inf
+    xinq = [Y[i,1]<=x[i]<= Y[i,end-1] for i in eachindex(x)]
+    int_result = sum(xinq) == length(x)
+    if int_result
+        min_distance = minimum([min(abs(Y[i,1]-x[i]), abs(Y[i,end-1]-x[i])) for i in eachindex(x)])
+    end
+    return int_result, min_distance
 end
 
 " Projects the shape vertices onto the axis. 
