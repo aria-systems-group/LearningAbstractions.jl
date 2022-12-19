@@ -10,6 +10,7 @@ using NearestNeighbors
 using Distances
 import Distances: evaluate
 using StatsBase
+using Distributions
 
 using LinearAlgebra: norm, I, nullspace
 using SparseArrays
@@ -44,6 +45,7 @@ function learn_abstraction(config_file::String)
 	lipschitz_bound = config["system"]["lipschitz_bound"] 
 	# TODO: Get this from the dataset
 	σ_noise = config["system"]["measurement_noise_sigma"]
+	process_noise_flag = config["system"]["process_noise"]
 
 	data_filename = config["system"]["datafile"]
 	res = BSON.load(data_filename)

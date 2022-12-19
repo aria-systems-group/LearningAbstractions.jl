@@ -7,12 +7,14 @@ struct GPRelatedInformation  # One for each set of GPs
 	post_scale_factors
 	Kinv
 	f_sup	
+	measurement_noise
+	process_noise
 end
 
 """
 Create the GP Info structure componenets.
 """
-function create_gp_info(gps, σ_noise, diameter_domain, sup_f)
+function create_gp_info(gps, σ_noise, diameter_domain, sup_f; process_noise=false)
 	γ_bds = []
 	RKHS_norm_bounds = []
 	logNoise = []
@@ -30,7 +32,7 @@ function create_gp_info(gps, σ_noise, diameter_domain, sup_f)
 		push!(γ_bds, 0.5*gp.nobs*log(1+1/σ_v2))
 	end
 	Kinv = inv(gps[1].cK.mat + exp(gps[1].logNoise.value)^2*I)
-    gp_info = GPRelatedInformation(γ_bds, RKHS_norm_bounds, logNoise, post_scale_factors, Kinv, sup_f)
+    gp_info = GPRelatedInformation(γ_bds, RKHS_norm_bounds, logNoise, post_scale_factors, Kinv, sup_f, !process_noise, process_noise)
     return gp_info
 end
 
@@ -50,7 +52,7 @@ function chowdhury_rkhs_prob(σ, ϵ, γ_bd, B, logNoise, post_scale_factor)
     return minimum([dbound, 1.])
 end
 
-function chowdhury_rkhs_prob_vector(gp_rkhs_info, σ_bounds, ϵ; local_RKHS_bound=nothing, local_gp_metadata=nothing)
+function chowdhury_rkhs_prob_vector(gp_rkhs_info::GPRelatedInformation, σ_bounds, ϵ; local_RKHS_bound=nothing, local_gp_metadata=nothing)
 	p_rkhs = zeros(length(ϵ))
 	
 	for i=1:length(σ_bounds)
