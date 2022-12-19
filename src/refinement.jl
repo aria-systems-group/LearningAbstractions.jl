@@ -25,8 +25,7 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
     domain_type = config["workspace"]["domain_type"]	
     results_dir = config["results_directory"]
 
-    filetag = split(basename(config_filename), ".")[1]
-	results_dir = "./results/$filetag"
+    results_dir = config["results_directory"]
 	base_results_dir = "$results_dir/base"
 	# state_filename = "$results_dir/states.bson"
 	# imdp_filename = "$results_dir/imdp.bson"
@@ -72,7 +71,15 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
         X_extent = [[l u] for (l, u) in zip(L,U)]
 
         # Load the existing global GPs
-        gps, gp_info = load_gps(gps_filename)
+        gps, gp_info_dict = load_gps(gps_filename)
+        gp_info = GPRelatedInformation(gp_info_dict["γ_bounds"],
+                        gp_info_dict["RKHS_norm_bounds"],
+                        gp_info_dict["logNoise"],
+                        gp_info_dict["post_scale_factors"],
+                        gp_info_dict["Kinv"],
+                        gp_info_dict["f_sup"],
+                        gp_info_dict["measurement_noise"],
+                        gp_info_dict["process_noise"])
 
         num_refine_states = length(states_to_refine)
         frac = length(states_to_refine)/num_states

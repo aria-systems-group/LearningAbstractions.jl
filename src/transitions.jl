@@ -27,6 +27,22 @@ function distance(X::SMatrix, Y::SMatrix)
     return minimum_distance(X, Y, dir, atol=1e-6)
 end
 
+"""
+    distance
+
+Compute the distance between a point and a convex set. If 0., the sets intersect.
+"""
+function distance(x::SVector, Y::SMatrix)
+    # Intersects? 
+    total_dis = 0.0
+    xinq = [Y[i,1]<=x[i]<= Y[i,end-1] for i in eachindex(x)]
+    if sum(xinq) != length(x)
+        dis = [xinq[i] ? 0.0 : min(abs(Y[i,1]-x[i]), abs(Y[i,end-1]-x[i])) for i in eachindex(x)]
+        total_dis = sqrt(sum([dis[i]^2 for i in eachindex(dis)])) 
+    end
+    return total_dis
+end
+
 function generate_all_transitions(grid, images, full_set; gp_rkhs_info=nothing, σ_bounds_all=nothing, ϵ_manual=nothing, local_gp_metadata=nothing, P̌_hot=nothing, P̂_hot=nothing, target_idxs_dict=nothing)
     num_states = length(grid) + 1 # All states plus the unsafe state!
     P̌ = spzeros(num_states, num_states)
@@ -62,6 +78,10 @@ function generate_all_transitions(grid, images, full_set; gp_rkhs_info=nothing, 
     @info "Finished generating transitions to unsafe state."
     P̌[end,end] = 1.
     P̂[end,end] = 1.
+
+    # Verify that the resulting matrices are OK
+    [@assert sum(P̌[i,:]) <= 1.0 for i=size(P̌,1)]
+    [@assert sum(P̂[i,:]) >= 1.0 for i=size(P̂,1)]
     
     return P̌, P̂ 
 end
@@ -114,7 +134,7 @@ function generate_pairwise_transitions(states, images; gp_rkhs_info=nothing, σ_
         lk = ReentrantLock()
         Threads.@threads for j in idxs_to_check
             statep_sa = states[j]
-            if fast_check(mean_image, all_state_means[j], ϵ_crit, image_radius, state_radius) 
+            # if true || fast_check(mean_image, all_state_means[j], ϵ_crit, image_radius, state_radius) 
                 res = transition_inverval(image, statep_sa, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds, ϵ_manual=ϵ_manual, local_RKHS_bound=RKHS_bound_local, local_gp_metadata=local_gp_metadata) 
                 lock(lk) do 
                     P̌[j,i] = res[1]
@@ -122,7 +142,7 @@ function generate_pairwise_transitions(states, images; gp_rkhs_info=nothing, σ_
                 lock(lk) do 
                     P̂[j,i] = res[2]
                 end 
-            else
+            # else
                 fast_checks += 1
             end
             next!(p)
@@ -146,19 +166,67 @@ function fast_check(mean_pt, mean_target, ϵ_crit, image_radius, set_radius)
 end
 
 function transition_inverval(X,Y; gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_manual=nothing, local_RKHS_bound=nothing, local_gp_metadata=nothing)
+
+    dims = length(Y[:,1])
+
+    # ! Eventually don't need this
     dis = distance(X, Y)
+
+    #===
+    Account for the process nosie, if any
+    ===#
+    η_manual = 0.05
+    Pr_process = ones(dims)
+
+    if typeof(gp_rkhs_info) == Dict{String, Any}
+        gp_rkhs_info = GPRelatedInformation(gp_rkhs_info["γ_bounds"],
+                            gp_rkhs_info["RKHS_norm_bounds"],	
+                            gp_rkhs_info["logNoise"],	
+                            gp_rkhs_info["post_scale_factors"],	
+                            gp_rkhs_info["Kinv"],	
+                            gp_rkhs_info["f_sup"],	
+                            gp_rkhs_info["measurement_noise"],	
+                            gp_rkhs_info["process_noise"],	)
+    end
+
+    if !isnothing(gp_rkhs_info) && gp_rkhs_info.process_noise
+        for i=1:dims
+            process_distribution = Truncated(Normal(0.0, exp(gp_rkhs_info.logNoise[i])), -η_manual, η_manual)
+            Pr_process[i] =  abs_cdf(process_distribution, η_manual) # Per dimension, assuming the same on each axis
+        end
+        η_offset = η_manual
+    else
+        η_offset = 0.
+    end
+
+    dis_comps = zeros(size(X,1), 2)
+    dis_fcn!(dis_comps, X, Y)
+
+    dis_comps[:,1] .-= η_offset
+    [dis_comps[i,1] = dis_comps[i,1] < 0.0 ? 0.0 : dis_comps[i,1] for i=1:dims]
+    dis_comps[:,2] .+= η_offset
+
     #===
     Full or Partial Intersection
     ===#
     if (dis <= 1e-4)
-        p̂ = 1.              # UB result for full + partial intersection
+        # ! Improve the partial intersection case
+        if !isnothing(gp_rkhs_info)
+            # ! unverified, 1.0 - (1.0 - ≤η_2)
+            p̂_vec = chowdhury_rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,2], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata)
+            p̂ = prod(p̂_vec.*Pr_process)
+        else
+            p̂ = 1.              # UB result for full + partial intersection
+        end
         containment_flag, min_distance = containment_check(X, Y)
         #===
         Full Intersection
         ===#
         if containment_flag     
             if !isnothing(gp_rkhs_info)
-                p̌ = chowdhury_rkhs_prob_vector(gp_rkhs_info, σ_bounds, min_distance,local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata) 
+                p̂ = 1. # ! Need to fix this case!
+                p̌_vec = chowdhury_rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,1], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata)*prod(Pr_process) 
+                p̌ = prod(p̌_vec.*Pr_process) 
             else
                 p̌ = 1.          
             end
@@ -170,16 +238,46 @@ function transition_inverval(X,Y; gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_ma
     ===#
     else
         if !isnothing(gp_rkhs_info)
-            p̂ = 1 - chowdhury_rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis, local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata)
+            # ! Unverified
+            # These return the probabilities of LEQ -- take the difference 
+            p_leq_lb = chowdhury_rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,1], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata)
+            p_leq_ub = chowdhury_rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,2], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata)
+            p_interval = (1.0 .- p_leq_lb.*Pr_process) - (1.0 .- p_leq_ub).*(1.0 .- Pr_process)
+            p̂ = prod(p_interval) 
         else
             p̂ = 0. 
         end
         p̌ = 0.
     end
+    @assert p̌ <= p̂
     return [p̌, p̂]
 end
 
-function containment_check(shape1,shape2, axes=nothing)
+function dis_fcn!(res, X::SMatrix, Y::SMatrix)
+    for i=1:size(X,1)
+        res[i,1] = minimum(abs.(X[i,:] .- Y[i,:]) ∪ abs.(X[i,:] .- Y[i, end:-1:1]))
+        res[i,2] = maximum(abs.(X[i,:] .- Y[i,:]) ∪ abs.(X[i,:] .- Y[i, end:-1:1]))
+    end
+end
+
+function dis_fcn!(res, X::SVector, Y::SMatrix)
+    for i in eachindex(X)
+        res[i,1] = minimum(abs.(X[i] .- Y[i,:]) ∪ abs.(X[i] .- Y[i, end:-1:1]))
+        res[i,2] = maximum(abs.(X[i] .- Y[i,:]) ∪ abs.(X[i] .- Y[i, end:-1:1]))
+    end
+end
+
+function abs_cdf(pdf, val)
+    return cdf(pdf, val) - cdf(pdf, -val)
+end
+
+function abs_cdf(pdf, val_lb, val_ub)
+    p_ub = abs_cdf(pdf, val_ub)
+    p_lb = abs_cdf(pdf, val_lb)
+    return p_ub - p_lb
+end
+
+function containment_check(shape1::SMatrix,shape2::SMatrix, axes=nothing)
     int_result = false 
     min_distance = Inf
     n_dims = size(shape1,1)
@@ -207,6 +305,16 @@ function containment_check(shape1,shape2, axes=nothing)
     end
     return int_result, min_distance
 
+end
+
+function containment_check(x::SVector, Y::SMatrix; axes=nothing)
+    min_distance = Inf
+    xinq = [Y[i,1]<=x[i]<= Y[i,end-1] for i in eachindex(x)]
+    int_result = sum(xinq) == length(x)
+    if int_result
+        min_distance = minimum([min(abs(Y[i,1]-x[i]), abs(Y[i,end-1]-x[i])) for i in eachindex(x)])
+    end
+    return int_result, min_distance
 end
 
 " Projects the shape vertices onto the axis. 
@@ -252,7 +360,7 @@ function calculate_ϵ_crit(gp_info, σ_bounds; local_RKHS_bound=nothing)
     ϵ = 0.01
     P = 0.0
     while P != 1.0
-        P = chowdhury_rkhs_prob_vector(gp_info, σ_bounds, ϵ, local_RKHS_bound=local_RKHS_bound) 
+        P = chowdhury_rkhs_prob_vector_single(gp_info, σ_bounds, ϵ, local_RKHS_bound=local_RKHS_bound) 
         ϵ *= 1.5 
     end
     return ϵ
