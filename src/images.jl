@@ -2,7 +2,9 @@
 
 function state_bounds(states_vec, gps; local_gps_flag=false, local_gps_data=nothing, local_gps_nns=nothing, domain_type="")
  
-    image_vec = Vector{typeof(states_vec[1])}(undef, length(states_vec))
+    odims = length(gps)
+    type = SMatrix{odims, 2^odims, Float64, odims*2^odims}
+    image_vec = Vector{type}(undef, length(states_vec)) #! this is incorrect
     σ_bounds_vec = Vector{Vector{Real}}(undef, length(states_vec))
 
     # Setup all the GP stuff

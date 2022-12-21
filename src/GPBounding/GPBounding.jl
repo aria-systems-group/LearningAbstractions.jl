@@ -34,7 +34,8 @@ Generate overapproximations of posterior mean and covariance functions using one
 """
 function bound_image(extent, gps::Vector{Any}, neg_gps::Vector{Any}; data_deps=nothing, known_component=nothing, σ_ubs=nothing, σ_approx_flag=false)
     # TODO: mod keyword handling and document
-    ndims = length(extent[1]) 
+    # ndims = length(extent[1]) 
+    ndims = length(gps) # > Use the number of GPs as the output dimension indicator
     # Assume that the extent is a hyperrectangle with lower and upper corners
     # lbf = Array(extent[1])
     # ubf = Array(extent[2])

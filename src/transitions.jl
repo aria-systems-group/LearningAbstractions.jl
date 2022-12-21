@@ -43,12 +43,24 @@ function distance(x::SVector, Y::SMatrix)
     return total_dis
 end
 
-function generate_all_transitions(grid, images, full_set; gp_rkhs_info=nothing, σ_bounds_all=nothing, ϵ_manual=nothing, local_gp_metadata=nothing, P̌_hot=nothing, P̂_hot=nothing, target_idxs_dict=nothing)
-    num_states = length(grid) + 1 # All states plus the unsafe state!
+function generate_all_transitions(states, images, full_set; gp_rkhs_info=nothing, σ_bounds_all=nothing, ϵ_manual=nothing, local_gp_metadata=nothing, P̌_hot=nothing, P̂_hot=nothing, target_idxs_dict=nothing)
+    num_states = length(states) + 1 # All states plus the unsafe state!
     P̌ = spzeros(num_states, num_states)
     P̂ = spzeros(num_states, num_states) 
 
-    P̌[1:end-1, 1:end-1], P̂[1:end-1, 1:end-1] = generate_pairwise_transitions(grid, images, gp_rkhs_info=gp_rkhs_info, σ_bounds_all=σ_bounds_all, ϵ_manual=ϵ_manual, local_gp_metadata=local_gp_metadata, target_idxs_dict=target_idxs_dict) 
+    ctrl_idxs = (2,) # Indicates which input indeces are control signals and can be disregarded?
+    # > Here and in the subsequent function, generate generate_pairwise_transitions, is where we need to reason about the control space. 
+    # > Transitions need only the images and the stripped-down original state extents;
+    # > Rather, reason about it in the transtion interval directly;
+    if !isempty(ctrl_idxs)
+        # Get a stripped-down version of the discrete states without control spaces
+    end
+
+    P̌[1:end-1, 1:end-1], P̂[1:end-1, 1:end-1] = generate_pairwise_transitions(states, images, gp_rkhs_info=gp_rkhs_info, σ_bounds_all=σ_bounds_all, ϵ_manual=ϵ_manual, local_gp_metadata=local_gp_metadata, target_idxs_dict=target_idxs_dict) 
+
+    # > For each pairwise transition, we have (X, U) -> (X, U), but in reality we are calculating (X, U) -> X since control does not evolve. 
+    # > For all of the target states X, the transition (X, U) -> (X, ⋅) is calculated for all control inputs; this is redundant but correct;
+    # > All of this seems correct. Let's change the data
 
     hot_idx = []
 
@@ -143,8 +155,8 @@ function generate_pairwise_transitions(states, images; gp_rkhs_info=nothing, σ_
                     P̂[j,i] = res[2]
                 end 
             # else
-                fast_checks += 1
-            end
+                # fast_checks += 1
+            # end
             next!(p)
         end
     end
@@ -167,7 +179,11 @@ end
 
 function transition_inverval(X,Y; gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_manual=nothing, local_RKHS_bound=nothing, local_gp_metadata=nothing)
 
-    dims = length(Y[:,1])
+    ctrl_idxs = (2,) # ! TODO generalize this if it works
+
+    Yr = Y[1:1, 1:2]
+    dims = size(X,1) 
+    Y = SMatrix{dims, 2^dims}(Yr)
 
     # ! Eventually don't need this
     dis = distance(X, Y)
@@ -266,6 +282,14 @@ function dis_fcn!(res, X::SVector, Y::SMatrix)
         res[i,2] = maximum(abs.(X[i] .- Y[i,:]) ∪ abs.(X[i] .- Y[i, end:-1:1]))
     end
 end
+
+# function dis_fcn!(res, X::SVector, Y::Matrix)
+#     for i in eachindex(X)
+#         res[i,1] = minimum(abs.(X[i] .- Y[i,:]) ∪ abs.(X[i] .- Y[i, end:-1:1]))
+#         res[i,2] = maximum(abs.(X[i] .- Y[i,:]) ∪ abs.(X[i] .- Y[i, end:-1:1]))
+#     end
+# end
+
 
 function abs_cdf(pdf, val)
     return cdf(pdf, val) - cdf(pdf, -val)

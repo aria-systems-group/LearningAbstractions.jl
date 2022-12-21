@@ -35,7 +35,10 @@ function extent_to_SA(extent)
 	res = zeros(ndims, ncols)
 
     # TODO: Extend to any dim?
-    if ndims == 2
+    if ndims == 1
+        res[1] = extent[1][1]
+        res[2] = extent[1][2]
+    elseif ndims == 2
         res[:,1] = [extent[1][1], extent[2][1]]
 	    res[:,2] = [extent[1][2], extent[2][1]]
 	    res[:,3] = [extent[1][2], extent[2][2]]
