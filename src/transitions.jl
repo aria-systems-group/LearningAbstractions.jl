@@ -144,7 +144,7 @@ function generate_pairwise_transitions(states, images; gp_rkhs_info=nothing, σ_
                 end 
             # else
                 fast_checks += 1
-            end
+            # end
             next!(p)
         end
     end
