@@ -143,7 +143,7 @@ function generate_pairwise_transitions(states, images; gp_rkhs_info=nothing, σ_
                     P̂[j,i] = res[2]
                 end 
             # else
-                fast_checks += 1
+                # fast_checks += 1
             # end
             next!(p)
         end
