@@ -181,8 +181,8 @@ function transition_inverval(X,Y; gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_ma
 
     ctrl_idxs = (2,) # ! TODO generalize this if it works
 
-    Yr = Y[1:1, 1:2]
     dims = size(X,1) 
+    Yr = Y[1:dims, 1:dims^2]
     Y = SMatrix{dims, 2^dims}(Yr)
 
     # ! Eventually don't need this
