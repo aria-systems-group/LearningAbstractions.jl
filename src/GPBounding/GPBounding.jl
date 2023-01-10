@@ -38,12 +38,11 @@ function bound_image(extent, gps::Vector{Any}, neg_gps::Vector{Any}; delta_input
     ndims = length(gps) 
     image_extent = Vector{Vector{Float64}}(undef, ndims)
     σ_bounds = zeros(ndims) 
-
     for i=1:ndims 
         image_extent[i], σ_bounds[i] = bound_extent_dim(gps[i], neg_gps[i], extent[1], extent[2])
         if delta_input_flag
-            tmp_extent = image_extent[i]
-            image_extent[i] = [extent[i][1] + tmp_extent[1], extent[i][2] + tmp_extent[2]]
+            image_extent[i][1] += extent[1][i]
+            image_extent[i][2] += extent[2][i]
         end
     end
     return image_extent, σ_bounds

@@ -63,9 +63,16 @@ function learn_abstraction(config_file::String)
 	input_data = data_dict[:input]
 	output_data = data_dict[:output]
 
+	if process_noise_flag
+		noise_config = data_dict[:noise] 
+		process_noise_dist = create_noise_dist(noise_config)
+	else
+		process_noise_dist = nothing
+	end
+
 	delta_input_flag = config_entry_try(config["system"], "delta_input_flag", false) # flag to indicate training on the delta from each point, i.e.
 	if delta_input_flag
-		output_data = output_data - input_data[1:size(output_data,1),:]
+		output_data -= input_data[1:size(output_data,1),:]
 	end
 
 	results_dir = config["results_directory"]
@@ -115,7 +122,7 @@ function learn_abstraction(config_file::String)
 		gp_info = LearningAbstractions.create_gp_info(gps, σ_noise, diameter_domain, sup_f, process_noise=process_noise_flag)
 		gp_info_dict = create_gp_info_dict(gp_info)
 		save_gps(Dict(:gps => gps, :info => gp_info_dict), gps_filename)
-		P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_state_σ_bounds, local_gp_metadata=local_gp_metadata)
+		P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, LearningAbstractions.extent_to_SA(X_extent), process_noise_dist=process_noise_dist, gp_rkhs_info=gp_info, σ_bounds_all=all_state_σ_bounds, local_gp_metadata=local_gp_metadata)
 	else
 		# TODO: using subset of data to get RKHS-related constants is inelegant
 		gps = LearningAbstractions.condition_gps(input_data, output_data, data_subset=full_gp_subset)
@@ -130,7 +137,7 @@ function learn_abstraction(config_file::String)
 		[all_states_SA[i] = LearningAbstractions.lower_to_SA(grid_lower, grid_spacing) for (i,grid_lower) in enumerate(grid)]
 		all_state_images, all_state_σ_bounds = state_bounds(all_states_SA, gps; local_gps_flag=local_gps_flag, local_gps_data=(input_data, output_data), local_gps_nns=local_gps_nns, domain_type=domain_type, delta_input_flag=delta_input_flag)
 
-		P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_state_σ_bounds, local_gp_metadata=local_gp_metadata)
+		P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, LearningAbstractions.extent_to_SA(X_extent), process_noise_dist=process_noise_dist, gp_rkhs_info=gp_info, σ_bounds_all=all_state_σ_bounds, local_gp_metadata=local_gp_metadata)
 	end
 	
 	if config["save_results"] && !reloaded_results_flag
@@ -151,6 +158,20 @@ function learn_abstraction(config_file::String)
 	end
 
 	return P̌, P̂, all_states_SA, base_results_dir, all_state_images, all_state_σ_bounds
+end
+
+"""
+Create an explicit distribution from a config dictionary.
+"""
+function create_noise_dist(config)
+	# TODO: Change data config struct to use general terms
+	noise_dist = nothing
+	if config["process_distribution"] == "Gaussian"
+		noise_dist = Normal(config["process_mean"], config["process_std"])
+	else
+		# TODO: Add bounded Gaussian, etc;
+	end
+	return noise_dist
 end
 
 end

@@ -43,7 +43,7 @@ function distance(x::SVector, Y::SMatrix)
     return total_dis
 end
 
-function generate_all_transitions(states, images, full_set; gp_rkhs_info=nothing, σ_bounds_all=nothing, ϵ_manual=nothing, local_gp_metadata=nothing, P̌_hot=nothing, P̂_hot=nothing, target_idxs_dict=nothing)
+function generate_all_transitions(states, images, full_set; process_noise_dist=nothing, gp_rkhs_info=nothing, σ_bounds_all=nothing, ϵ_manual=nothing, local_gp_metadata=nothing, P̌_hot=nothing, P̂_hot=nothing, target_idxs_dict=nothing)
     num_states = length(states) + 1 # All states plus the unsafe state!
     P̌ = spzeros(num_states, num_states)
     P̂ = spzeros(num_states, num_states) 
@@ -52,11 +52,12 @@ function generate_all_transitions(states, images, full_set; gp_rkhs_info=nothing
     # > Here and in the subsequent function, generate generate_pairwise_transitions, is where we need to reason about the control space. 
     # > Transitions need only the images and the stripped-down original state extents;
     # > Rather, reason about it in the transtion interval directly;
+    # TODO: Remove these things
     if !isempty(ctrl_idxs)
         # Get a stripped-down version of the discrete states without control spaces
     end
 
-    P̌[1:end-1, 1:end-1], P̂[1:end-1, 1:end-1] = generate_pairwise_transitions(states, images, gp_rkhs_info=gp_rkhs_info, σ_bounds_all=σ_bounds_all, ϵ_manual=ϵ_manual, local_gp_metadata=local_gp_metadata, target_idxs_dict=target_idxs_dict) 
+    P̌[1:end-1, 1:end-1], P̂[1:end-1, 1:end-1] = generate_pairwise_transitions(states, images, process_noise_dist=process_noise_dist, gp_rkhs_info=gp_rkhs_info, σ_bounds_all=σ_bounds_all, ϵ_manual=ϵ_manual, local_gp_metadata=local_gp_metadata, target_idxs_dict=target_idxs_dict) 
 
     # > For each pairwise transition, we have (X, U) -> (X, U), but in reality we are calculating (X, U) -> X since control does not evolve. 
     # > For all of the target states X, the transition (X, U) -> (X, ⋅) is calculated for all control inputs; this is redundant but correct;
@@ -82,7 +83,7 @@ function generate_all_transitions(states, images, full_set; gp_rkhs_info=nothing
 
     for i in setdiff(1:num_states-1, hot_idx)   # Always calculating transitions to the unsafe set!
         σ_bounds = isnothing(gp_rkhs_info) ? nothing : σ_bounds_all[i]  
-        p̌, p̂ = transition_inverval(images[i], full_set, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds, ϵ_manual=ϵ_manual, local_gp_metadata=local_gp_metadata) 
+        p̌, p̂ = transition_inverval(images[i], full_set, process_noise_dist=process_noise_dist, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds, ϵ_manual=ϵ_manual, local_gp_metadata=local_gp_metadata) 
         P̌[i,end] = 1 - p̂
         P̂[i,end] = 1 - p̌ 
     end 
@@ -98,8 +99,9 @@ function generate_all_transitions(states, images, full_set; gp_rkhs_info=nothing
     return P̌, P̂ 
 end
 
-function generate_pairwise_transitions(states, images; gp_rkhs_info=nothing, σ_bounds_all=nothing, ϵ_manual=nothing, local_gp_metadata=nothing, target_idxs_dict=nothing)
+function generate_pairwise_transitions(states, images; process_noise_dist=nothing, gp_rkhs_info=nothing, σ_bounds_all=nothing, ϵ_manual=nothing, local_gp_metadata=nothing, target_idxs_dict=nothing)
 
+    dims = size(images[1],1)
     num_states = length(states)
     P̌ = spzeros(num_states, num_states)
     P̂ = spzeros(num_states, num_states) 
@@ -108,13 +110,12 @@ function generate_pairwise_transitions(states, images; gp_rkhs_info=nothing, σ_
     all_state_means = state_means(states)
     all_image_means = state_means(images)
 
-    # TODO: Replace this when grid is replaced
-    state_radius = norm(states[1][:,1] - states[1][:,end-1])/2
     fast_checks = 0
     skipped_idxs = 0
     checked_idxs = 0
 
     p = Progress(num_states^2, desc="Computing transition intervals...", dt=status_bar_period)
+    η_crit = !isnothing(process_noise_dist) ? calculate_η_crit(process_noise_dist) : 0.0
 
     for i in 1:num_states 
         image = images[i]
@@ -122,8 +123,8 @@ function generate_pairwise_transitions(states, images; gp_rkhs_info=nothing, σ_
         mean_image = all_image_means[i]
         if !isnothing(gp_rkhs_info)
             σ_bounds = σ_bounds_all[i]
-            # ! TODO: Generalize!!!!!
-            # ! TODO: Use Local f_sup!!!!!
+            # TODO: Generalize the GP kernel
+            state_radius = norm(states[i][1:dims,1] - states[i][1:dims,end-1])/2 
             RKHS_bound_local = gp_rkhs_info.f_sup / sqrt(exp(-1/2*(2*state_radius)^2/exp(0.65)))
             ϵ_crit = calculate_ϵ_crit(gp_rkhs_info, σ_bounds, local_RKHS_bound=RKHS_bound_local)
         else
@@ -144,19 +145,20 @@ function generate_pairwise_transitions(states, images; gp_rkhs_info=nothing, σ_
 
         # TODO: This is a first whack at doing this in a parallel way - not the best way to do it!
         lk = ReentrantLock()
+
         Threads.@threads for j in idxs_to_check
             statep_sa = states[j]
-            # if true || fast_check(mean_image, all_state_means[j], ϵ_crit, image_radius, state_radius) 
-                res = transition_inverval(image, statep_sa, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds, ϵ_manual=ϵ_manual, local_RKHS_bound=RKHS_bound_local, local_gp_metadata=local_gp_metadata) 
+            if fast_check(mean_image, all_state_means[j][1:dims], ϵ_crit, η_crit, image_radius, state_radius) 
+                res = transition_inverval(image, statep_sa, process_noise_dist=process_noise_dist, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds, ϵ_manual=ϵ_manual, local_RKHS_bound=RKHS_bound_local, local_gp_metadata=local_gp_metadata) 
                 lock(lk) do 
                     P̌[j,i] = res[1]
                 end 
                 lock(lk) do 
                     P̂[j,i] = res[2]
                 end 
-            # else
-                # fast_checks += 1
-            # end
+            else
+                fast_checks += 1
+            end
             next!(p)
         end
     end
@@ -172,12 +174,12 @@ end
 
 "Determine the set of states that will have non-zero transition probability upper bounds."
 # ! Need to verify this fast check
-function fast_check(mean_pt, mean_target, ϵ_crit, image_radius, set_radius)
-    flag = norm(mean_pt - mean_target) < ϵ_crit + image_radius + set_radius
+function fast_check(mean_pt, mean_target, ϵ_crit, η_crit, image_radius, set_radius)
+    flag = norm(mean_pt - mean_target) < ϵ_crit + η_crit + image_radius + set_radius
     return flag
 end
 
-function transition_inverval(X,Y; gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_manual=nothing, local_RKHS_bound=nothing, local_gp_metadata=nothing)
+function transition_inverval(X,Y; process_noise_dist=nothing, gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_manual=nothing, local_RKHS_bound=nothing, local_gp_metadata=nothing)
     # Get the dimensions of the states - if control is embedded, modify to only look at state-space
     dims = size(X,1) 
     if dims < size(Y,1)
@@ -191,7 +193,7 @@ function transition_inverval(X,Y; gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_ma
     #===
     Account for the process nosie, if any
     ===#
-    η_manual = 0.05
+    η_manual = 0.1
     Pr_process = ones(dims)
 
     if typeof(gp_rkhs_info) == Dict{String, Any}
@@ -205,10 +207,9 @@ function transition_inverval(X,Y; gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_ma
                             gp_rkhs_info["process_noise"],	)
     end
 
-    if !isnothing(gp_rkhs_info) && gp_rkhs_info.process_noise
+    if !isnothing(gp_rkhs_info) && !isnothing(process_noise_dist) # TODO: Separate process reliance from GP
         for i=1:dims
-            process_distribution = Truncated(Normal(0.0, exp(gp_rkhs_info.logNoise[i])), -η_manual, η_manual)
-            Pr_process[i] =  abs_cdf(process_distribution, η_manual) # Per dimension, assuming the same on each axis
+            Pr_process[i] =  abs_cdf(process_noise_dist, η_manual) # Per dimension, assuming the same on each axis
         end
         η_offset = η_manual
     else
@@ -382,5 +383,20 @@ function calculate_ϵ_crit(gp_info, σ_bounds; local_RKHS_bound=nothing)
         ϵ *= 1.5 
     end
     return ϵ
+end
+
+""" 
+    calculate_η_crit
+
+Calculates the value of η that a.s. bounds the process noise
+"""
+function calculate_η_crit(dist)
+    η = 0.01
+    P = 0.0
+    while P != 1.0
+        P = cdf(dist, η)
+        η *= 2
+    end
+    return η
 end
 
