@@ -37,11 +37,11 @@ function create_gp_info(gps, σ_noise, diameter_domain, sup_f; process_noise=fal
 end
 
 """
-	chowdhury_rkhs_prob
+	rkhs_prob
 
 Calculates the probability of the dynamics being epsilon-close given the GP parameters.
 """
-function chowdhury_rkhs_prob(σ, ϵ, γ_bd, B, logNoise, post_scale_factor)
+function rkhs_prob(σ, ϵ, γ_bd, B, logNoise, post_scale_factor)
     R = post_scale_factor*exp(logNoise)
     frac = ϵ/(post_scale_factor*σ)
 	if frac > B
@@ -52,7 +52,12 @@ function chowdhury_rkhs_prob(σ, ϵ, γ_bd, B, logNoise, post_scale_factor)
     return minimum([dbound, 1.])
 end
 
-function chowdhury_rkhs_prob_vector(gp_rkhs_info::GPRelatedInformation, σ_bounds, ϵ; local_RKHS_bound=nothing, local_gp_metadata=nothing)
+"""
+	rkhs_prob_vector
+
+Calculates the probability of /not/ being ϵ-close for each component
+"""
+function rkhs_prob_vector(gp_rkhs_info::GPRelatedInformation, σ_bounds, ϵ; local_RKHS_bound=nothing, local_gp_metadata=nothing)
 	p_rkhs = zeros(length(ϵ))
 	
 	for i=1:length(σ_bounds)
@@ -67,16 +72,16 @@ function chowdhury_rkhs_prob_vector(gp_rkhs_info::GPRelatedInformation, σ_bound
 			γ_bound = gp_rkhs_info.γ_bounds[i]	
 		end
 
-		p_rkhs[i] = 1. - chowdhury_rkhs_prob(σ_bounds[i], ϵ[i], 
-										   gp_rkhs_info.γ_bounds[i], 
-										   RKHS_bound, 
-										   gp_rkhs_info.logNoise[i], 
-										   gp_rkhs_info.post_scale_factors[i])
+		p_rkhs[i] = 1. - rkhs_prob(σ_bounds[i], ϵ[i], 
+								   gp_rkhs_info.γ_bounds[i], 
+								   RKHS_bound, 
+								   gp_rkhs_info.logNoise[i], 
+								   gp_rkhs_info.post_scale_factors[i])
 	end
 	return p_rkhs
 end
 
-function chowdhury_rkhs_prob_vector_single(gp_rkhs_info, σ_bounds, ϵ; local_RKHS_bound=nothing, local_gp_metadata=nothing)
+function rkhs_prob_vector_single(gp_rkhs_info, σ_bounds, ϵ; local_RKHS_bound=nothing, local_gp_metadata=nothing)
 	p_rkhs = 1.0
 	
 	for i=1:length(σ_bounds)
@@ -91,7 +96,7 @@ function chowdhury_rkhs_prob_vector_single(gp_rkhs_info, σ_bounds, ϵ; local_RK
 			γ_bound = gp_rkhs_info.γ_bounds[i]	
 		end
 
-		p_rkhs *= 1. - chowdhury_rkhs_prob(σ_bounds[i], ϵ, 
+		p_rkhs *= 1. - rkhs_prob(σ_bounds[i], ϵ, 
 										   gp_rkhs_info.γ_bounds[i], 
 										   RKHS_bound, 
 										   gp_rkhs_info.logNoise[i], 

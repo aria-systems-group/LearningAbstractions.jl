@@ -10,66 +10,56 @@ include("squared_exponential.jl")
 
 export bound_image, bound_images
 
-""" 
-    bound_images
+# """ 
+#     bound_images
 
-Generate overapproximations of posterior mean and covariance functions for a collection of extents.
-"""
-function bound_images(extents, gps)
-    image_bounds = Vector{Any}(undef, length(extents))
-    for i=1:length(extents)
-        image_bounds[i] = bound_image(extents[i], gps)
-    end
-    return image_bounds
-end
+# Generate overapproximations of posterior mean and covariance functions for a collection of extents.
+# """
+# function bound_images(extents, gps)
+#     image_bounds = Vector{Any}(undef, length(extents))
+#     for i=1:length(extents)
+#         image_bounds[i] = bound_image(extents[i], gps)
+#     end
+#     return image_bounds
+# end
 
 """ 
     bound_image
 
 Generate overapproximations of posterior mean and covariance functions using one of several methods.
 # Arguments
-- `extent::Dict` - Discrete state extent 
-- `gp_info_dict::Dict` - Dictionary with GP set and RKHS info
-- `data_deps::Dict` - Dictionary indicating input-output data dependencies
+- `extent` - Discrete state extent 
+- `gps` - Vector of GPs and associated metadata
+- `neg_gps` - Vector of GPs with -1*α vector
+- `delta_input_flag` - True uses `x` as the known component 
 """
-function bound_image(extent, gps::Vector{Any}, neg_gps::Vector{Any}; data_deps=nothing, known_component=nothing, σ_ubs=nothing, σ_approx_flag=false)
+function bound_image(extent, gps::Vector{Any}, neg_gps::Vector{Any}; delta_input_flag=false, data_deps=nothing, known_component=nothing, σ_ubs=nothing, σ_approx_flag=false)
     # TODO: mod keyword handling and document
-    ndims = length(extent[1]) 
-    # Assume that the extent is a hyperrectangle with lower and upper corners
-    # lbf = Array(extent[1])
-    # ubf = Array(extent[2])
-
+    ndims = length(gps) 
     image_extent = Vector{Vector{Float64}}(undef, ndims)
     σ_bounds = zeros(ndims) 
-
     for i=1:ndims 
-        
-        # if !isnothing(known_component) 
-        #     # TODO: Assume an identity form for now. Requires its own bounding process.
-        #     post_extent[dim_key] = [extent[dim_key][1] + μ_L_lb, extent[dim_key][2] + μ_U_ub] 
-        # else
         image_extent[i], σ_bounds[i] = bound_extent_dim(gps[i], neg_gps[i], extent[1], extent[2])
+        if delta_input_flag
+            image_extent[i][1] += extent[1][i]
+            image_extent[i][2] += extent[2][i]
+        end
     end
     return image_extent, σ_bounds
 end
 
 function bound_extent_dim(gp, neg_gp, lbf, ubf; approximate_flag=false)
-    # # lbf = lb[findall(.>(0), data_deps[dim_key][:])]
-    # ubf = ub[findall(.>(0), data_deps[dim_key][:])]
-    # TODO: Avoid deep copy! At all costs! For 2000 dps, 404MB vs 38MB!
-    # x_lb, μ_L_lb, μ_L_ub = compute_μ_bounds_bnb(deepcopy(gp), lbf, ubf) 
     if approximate_flag
         μ_L_lb, μ_U_ub = compute_μ_bounds_approx(gp, lbf, ubf) 
     else
         _, μ_L_lb, _ = compute_μ_bounds_bnb(gp, lbf, ubf) 
-        # x_ub, μ_U_lb, μ_U_ub = compute_μ_bounds_bnb(deepcopy(gp), lbf, ubf, max_flag=true)
         _, _, μ_U_ub = compute_μ_bounds_bnb(neg_gp, lbf, ubf, max_flag=true)
     end
 
     # if σ_approx_flag
     _, σ_U_lb, σ_U_ub = compute_σ_ub_bounds_approx(gp, lbf, ubf) 
     # elseif !isnothing(σ_ubs)
-    #     _, σ_U_lb, σ_U_ub = compute_σ_ub_bounds_from_gp(gps[i], lbf, ubf, ub=σ_ubs[dim_key])
+    # _, σ_U_lb, σ_U_ub = compute_σ_ub_bounds_from_gp(gp, lbf, ubf)
     # else
     #     _, σ_U_lb, σ_U_ub = compute_σ_ub_bounds(gps[i], gp_info_dict[dim_key].Kinv, lbf, ubf)
     # end

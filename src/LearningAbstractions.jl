@@ -29,6 +29,16 @@ include("transitions.jl")
 include("imdptools.jl")
 include("merging.jl")
 
+function config_entry_try(dict, key, default_value)
+	res = default_value
+	try
+		res = dict[key]
+	catch
+		@warn "Key $key not found in configuration dictionary. Using default value $default_value"
+	end
+	return res
+end
+
 function learn_abstraction(config_file::String)
 	f = open(config_file)
 	config = TOML.parse(f)
@@ -41,17 +51,32 @@ function learn_abstraction(config_file::String)
 	diameter_domain = sqrt(sum((L-U).^2))
 	grid_spacing = SA_F64[config["discretization"]["grid_spacing"]...]
 	grid = LearningAbstractions.grid_generator(L, U, grid_spacing)
-	
 	lipschitz_bound = config["system"]["lipschitz_bound"] 
-	# TODO: Get this from the dataset
-	σ_noise = config["system"]["measurement_noise_sigma"]
-	process_noise_flag = config["system"]["process_noise"]
 
 	data_filename = config["system"]["datafile"]
 	res = BSON.load(data_filename)
 	data_dict = res[:dataset_dict]
 	input_data = data_dict[:input]
 	output_data = data_dict[:output]
+	if data_dict[:noise]["measurement_std"] > 0.0 && data_dict[:noise]["process_std"] > 0.0
+		@error "Only one of either measurement or process noise is supported."	
+	end
+	σ_noise = max(data_dict[:noise]["measurement_std"], data_dict[:noise]["process_std"]) # One of these is zero, so take which one is not
+	process_noise_flag = data_dict[:noise]["process_std"] > 0.0 
+
+	if process_noise_flag
+		noise_config = data_dict[:noise] 
+		process_noise_dist = create_noise_dist(noise_config)
+		@info "System has process noise."
+	else
+		process_noise_dist = nothing
+		@info "System has measurement noise."
+	end
+
+	delta_input_flag = config_entry_try(config["system"], "delta_input_flag", false) # flag to indicate training on the delta from each point, i.e.
+	if delta_input_flag
+		output_data -= input_data[1:size(output_data,1),:]
+	end
 
 	results_dir = config["results_directory"]
 	base_results_dir = "$results_dir/base"
@@ -93,16 +118,14 @@ function learn_abstraction(config_file::String)
 		all_state_σ_bounds = state_dict[:bounds]
 		reloaded_states_flag = true
 
-		# TODO: using subset of data to get RKHS-related constants is inelegant
 		gps = LearningAbstractions.condition_gps(input_data, output_data, data_subset=full_gp_subset)
 		diameter_domain = sqrt(sum((L-U).^2))
 		sup_f = U + lipschitz_bound*diameter_domain
 		gp_info = LearningAbstractions.create_gp_info(gps, σ_noise, diameter_domain, sup_f, process_noise=process_noise_flag)
 		gp_info_dict = create_gp_info_dict(gp_info)
 		save_gps(Dict(:gps => gps, :info => gp_info_dict), gps_filename)
-		P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_state_σ_bounds, local_gp_metadata=local_gp_metadata)
+		P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, LearningAbstractions.extent_to_SA(X_extent), process_noise_dist=process_noise_dist, gp_rkhs_info=gp_info, σ_bounds_all=all_state_σ_bounds, local_gp_metadata=local_gp_metadata)
 	else
-		# TODO: using subset of data to get RKHS-related constants is inelegant
 		gps = LearningAbstractions.condition_gps(input_data, output_data, data_subset=full_gp_subset)
 		diameter_domain = sqrt(sum((L-U).^2))
 		sup_f = U + lipschitz_bound*diameter_domain
@@ -113,9 +136,9 @@ function learn_abstraction(config_file::String)
 		n_states = length(grid)
 		all_states_SA = Vector{SMatrix}(undef, n_states)
 		[all_states_SA[i] = LearningAbstractions.lower_to_SA(grid_lower, grid_spacing) for (i,grid_lower) in enumerate(grid)]
-		all_state_images, all_state_σ_bounds = state_bounds(all_states_SA, gps; local_gps_flag=local_gps_flag, local_gps_data=(input_data, output_data), local_gps_nns=local_gps_nns, domain_type=domain_type)
+		all_state_images, all_state_σ_bounds = state_bounds(all_states_SA, gps; local_gps_flag=local_gps_flag, local_gps_data=(input_data, output_data), local_gps_nns=local_gps_nns, domain_type=domain_type, delta_input_flag=delta_input_flag)
 
-		P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_state_σ_bounds, local_gp_metadata=local_gp_metadata)
+		P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, LearningAbstractions.extent_to_SA(X_extent), process_noise_dist=process_noise_dist, gp_rkhs_info=gp_info, σ_bounds_all=all_state_σ_bounds, local_gp_metadata=local_gp_metadata)
 	end
 	
 	if config["save_results"] && !reloaded_results_flag
@@ -136,6 +159,20 @@ function learn_abstraction(config_file::String)
 	end
 
 	return P̌, P̂, all_states_SA, base_results_dir, all_state_images, all_state_σ_bounds
+end
+
+"""
+Create an explicit distribution from a config dictionary.
+"""
+function create_noise_dist(config)
+	# TODO: Change data config struct to use general terms
+	noise_dist = nothing
+	if config["process_distribution"] == "Gaussian"
+		noise_dist = Normal(config["process_mean"], config["process_std"])
+	else
+		# TODO: Add bounded Gaussian, etc;
+	end
+	return noise_dist
 end
 
 end
