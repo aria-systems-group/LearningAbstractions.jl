@@ -70,11 +70,28 @@ end
 evaluate(dist::SE2WeightedEuclidean, a, b) = se2_weighted_metric(a, b)
 
 """
+Distance Metric for SE(2) + R
+"""
+struct SE2RWeightedEuclidean <: Distances.Metric
+end
+# > Custom specification of radial domains
+# TODO: Need a way to adjust these weights easily
+function se2R_weighted_metric(a, b; w=[1,1,pi,1])
+    ttl = sum((a[1:2].-b[1:2]).^2 .* w[1:2]) + (a[4] - b[4])^2*w[4]
+    ttl += min(abs(a[3]- b[3]), abs(2*pi - abs(a[3] - b[3])))/w[3]
+    return sqrt(ttl)
+end
+evaluate(dist::SE2RWeightedEuclidean, a, b) = se2R_weighted_metric(a, b)
+
+
+"""
 Create a tree based using the appropriate metric.
 """
 function create_data_tree(input_data, domain_type) 
     if domain_type == "se(2)"
         tree = BallTree(input_data, SE2WeightedEuclidean())
+    elseif domain_type == "se(2)+R"
+        tree = BallTree(input_data, SE2RWeightedEuclidean())
     else    # default to pure Euclidean distance
         tree = KDTree(input_data)
     end
