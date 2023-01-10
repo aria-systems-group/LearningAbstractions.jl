@@ -49,15 +49,10 @@ function bound_image(extent, gps::Vector{Any}, neg_gps::Vector{Any}; delta_input
 end
 
 function bound_extent_dim(gp, neg_gp, lbf, ubf; approximate_flag=false)
-    # # lbf = lb[findall(.>(0), data_deps[dim_key][:])]
-    # ubf = ub[findall(.>(0), data_deps[dim_key][:])]
-    # TODO: Avoid deep copy! At all costs! For 2000 dps, 404MB vs 38MB!
-    # x_lb, μ_L_lb, μ_L_ub = compute_μ_bounds_bnb(deepcopy(gp), lbf, ubf) 
     if approximate_flag
         μ_L_lb, μ_U_ub = compute_μ_bounds_approx(gp, lbf, ubf) 
     else
         _, μ_L_lb, _ = compute_μ_bounds_bnb(gp, lbf, ubf) 
-        # x_ub, μ_U_lb, μ_U_ub = compute_μ_bounds_bnb(deepcopy(gp), lbf, ubf, max_flag=true)
         _, _, μ_U_ub = compute_μ_bounds_bnb(neg_gp, lbf, ubf, max_flag=true)
     end
 

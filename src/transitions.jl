@@ -48,23 +48,9 @@ function generate_all_transitions(states, images, full_set; process_noise_dist=n
     P̌ = spzeros(num_states, num_states)
     P̂ = spzeros(num_states, num_states) 
 
-    ctrl_idxs = (2,) # Indicates which input indeces are control signals and can be disregarded?
-    # > Here and in the subsequent function, generate generate_pairwise_transitions, is where we need to reason about the control space. 
-    # > Transitions need only the images and the stripped-down original state extents;
-    # > Rather, reason about it in the transtion interval directly;
-    # TODO: Remove these things
-    if !isempty(ctrl_idxs)
-        # Get a stripped-down version of the discrete states without control spaces
-    end
-
     P̌[1:end-1, 1:end-1], P̂[1:end-1, 1:end-1] = generate_pairwise_transitions(states, images, process_noise_dist=process_noise_dist, gp_rkhs_info=gp_rkhs_info, σ_bounds_all=σ_bounds_all, ϵ_manual=ϵ_manual, local_gp_metadata=local_gp_metadata, target_idxs_dict=target_idxs_dict) 
 
-    # > For each pairwise transition, we have (X, U) -> (X, U), but in reality we are calculating (X, U) -> X since control does not evolve. 
-    # > For all of the target states X, the transition (X, U) -> (X, ⋅) is calculated for all control inputs; this is redundant but correct;
-    # > All of this seems correct. Let's change the data
-
     hot_idx = []
-
     if !isnothing(P̌_hot) && !isnothing(P̂_hot)
         num_hot = size(P̌_hot)[1]
         hot_idx = 1:num_hot-1

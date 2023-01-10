@@ -109,10 +109,8 @@ Create local GPs using k-nearest neighbors to select data.
 """
 function create_local_gps(input, output, center; num_neighbors=75, kernel_params=[0., 0.65], tree=tree)
     new_gps = []
-    # TODO: Simplify this with the new GP function
-    for i=1:size(output, 1)
+    for i in axes(output, 1)
         x_nn, y_nn = get_local_data_knn(center, input, output[i,:], num_neighbors=num_neighbors, tree=tree)
-        # TODO: Handle params in a better way
         push!(new_gps, condition_gp_1dim(x_nn, y_nn; se_params=kernel_params))
     end
 

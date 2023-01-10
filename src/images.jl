@@ -39,7 +39,6 @@ function state_bounds(states_vec, gps; local_gps_flag=false, local_gps_data=noth
             image, σ_bounds = LearningAbstractions.GPBounding.bound_image([state[:,1], state[:,end-1]], gps, neg_gps, delta_input_flag=delta_input_flag)
         end
         image_vec[idx] = extent_to_SA(image)
-        # TODO: Add RKHS-related calculations here for persistence? 
         σ_bounds_vec[idx] = σ_bounds
         next!(p)
     end

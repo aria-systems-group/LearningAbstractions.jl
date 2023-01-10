@@ -51,23 +51,26 @@ function learn_abstraction(config_file::String)
 	diameter_domain = sqrt(sum((L-U).^2))
 	grid_spacing = SA_F64[config["discretization"]["grid_spacing"]...]
 	grid = LearningAbstractions.grid_generator(L, U, grid_spacing)
-	
 	lipschitz_bound = config["system"]["lipschitz_bound"] 
-	# TODO: Get this from the dataset
-	σ_noise = config["system"]["measurement_noise_sigma"]
-	process_noise_flag = config_entry_try(config["system"], "process_noise", false)
 
 	data_filename = config["system"]["datafile"]
 	res = BSON.load(data_filename)
 	data_dict = res[:dataset_dict]
 	input_data = data_dict[:input]
 	output_data = data_dict[:output]
+	if data_dict[:noise]["measurement_std"] > 0.0 && data_dict[:noise]["process_std"] > 0.0
+		@error "Only one of either measurement or process noise is supported."	
+	end
+	σ_noise = max(data_dict[:noise]["measurement_std"], data_dict[:noise]["process_std"]) # One of these is zero, so take which one is not
+	process_noise_flag = data_dict[:noise]["process_std"] > 0.0 
 
 	if process_noise_flag
 		noise_config = data_dict[:noise] 
 		process_noise_dist = create_noise_dist(noise_config)
+		@info "System has process noise."
 	else
 		process_noise_dist = nothing
+		@info "System has measurement noise."
 	end
 
 	delta_input_flag = config_entry_try(config["system"], "delta_input_flag", false) # flag to indicate training on the delta from each point, i.e.
@@ -115,7 +118,6 @@ function learn_abstraction(config_file::String)
 		all_state_σ_bounds = state_dict[:bounds]
 		reloaded_states_flag = true
 
-		# TODO: using subset of data to get RKHS-related constants is inelegant
 		gps = LearningAbstractions.condition_gps(input_data, output_data, data_subset=full_gp_subset)
 		diameter_domain = sqrt(sum((L-U).^2))
 		sup_f = U + lipschitz_bound*diameter_domain
@@ -124,7 +126,6 @@ function learn_abstraction(config_file::String)
 		save_gps(Dict(:gps => gps, :info => gp_info_dict), gps_filename)
 		P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, LearningAbstractions.extent_to_SA(X_extent), process_noise_dist=process_noise_dist, gp_rkhs_info=gp_info, σ_bounds_all=all_state_σ_bounds, local_gp_metadata=local_gp_metadata)
 	else
-		# TODO: using subset of data to get RKHS-related constants is inelegant
 		gps = LearningAbstractions.condition_gps(input_data, output_data, data_subset=full_gp_subset)
 		diameter_domain = sqrt(sum((L-U).^2))
 		sup_f = U + lipschitz_bound*diameter_domain
