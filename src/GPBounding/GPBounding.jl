@@ -10,46 +10,41 @@ include("squared_exponential.jl")
 
 export bound_image, bound_images
 
-""" 
-    bound_images
+# """ 
+#     bound_images
 
-Generate overapproximations of posterior mean and covariance functions for a collection of extents.
-"""
-function bound_images(extents, gps)
-    image_bounds = Vector{Any}(undef, length(extents))
-    for i=1:length(extents)
-        image_bounds[i] = bound_image(extents[i], gps)
-    end
-    return image_bounds
-end
+# Generate overapproximations of posterior mean and covariance functions for a collection of extents.
+# """
+# function bound_images(extents, gps)
+#     image_bounds = Vector{Any}(undef, length(extents))
+#     for i=1:length(extents)
+#         image_bounds[i] = bound_image(extents[i], gps)
+#     end
+#     return image_bounds
+# end
 
 """ 
     bound_image
 
 Generate overapproximations of posterior mean and covariance functions using one of several methods.
 # Arguments
-- `extent::Dict` - Discrete state extent 
-- `gp_info_dict::Dict` - Dictionary with GP set and RKHS info
-- `data_deps::Dict` - Dictionary indicating input-output data dependencies
+- `extent` - Discrete state extent 
+- `gps` - Vector of GPs and associated metadata
+- `neg_gps` - Vector of GPs with -1*α vector
+- `delta_input_flag` - True uses `x` as the known component 
 """
-function bound_image(extent, gps::Vector{Any}, neg_gps::Vector{Any}; data_deps=nothing, known_component=nothing, σ_ubs=nothing, σ_approx_flag=false)
+function bound_image(extent, gps::Vector{Any}, neg_gps::Vector{Any}; delta_input_flag=false, data_deps=nothing, known_component=nothing, σ_ubs=nothing, σ_approx_flag=false)
     # TODO: mod keyword handling and document
-    # ndims = length(extent[1]) 
-    ndims = length(gps) # > Use the number of GPs as the output dimension indicator
-    # Assume that the extent is a hyperrectangle with lower and upper corners
-    # lbf = Array(extent[1])
-    # ubf = Array(extent[2])
-
+    ndims = length(gps) 
     image_extent = Vector{Vector{Float64}}(undef, ndims)
     σ_bounds = zeros(ndims) 
 
     for i=1:ndims 
-        
-        # if !isnothing(known_component) 
-        #     # TODO: Assume an identity form for now. Requires its own bounding process.
-        #     post_extent[dim_key] = [extent[dim_key][1] + μ_L_lb, extent[dim_key][2] + μ_U_ub] 
-        # else
         image_extent[i], σ_bounds[i] = bound_extent_dim(gps[i], neg_gps[i], extent[1], extent[2])
+        if delta_input_flag
+            tmp_extent = image_extent[i]
+            image_extent[i] = [extent[i][1] + tmp_extent[1], extent[i][2] + tmp_extent[2]]
+        end
     end
     return image_extent, σ_bounds
 end

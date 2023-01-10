@@ -29,6 +29,16 @@ include("transitions.jl")
 include("imdptools.jl")
 include("merging.jl")
 
+function config_entry_try(dict, key, default_value)
+	res = default_value
+	try
+		res = dict[key]
+	catch
+		@warn "Key $key not found in configuration dictionary. Using default value $default_value"
+	end
+	return res
+end
+
 function learn_abstraction(config_file::String)
 	f = open(config_file)
 	config = TOML.parse(f)
@@ -45,13 +55,18 @@ function learn_abstraction(config_file::String)
 	lipschitz_bound = config["system"]["lipschitz_bound"] 
 	# TODO: Get this from the dataset
 	σ_noise = config["system"]["measurement_noise_sigma"]
-	process_noise_flag = config["system"]["process_noise"]
+	process_noise_flag = config_entry_try(config["system"], "process_noise", false)
 
 	data_filename = config["system"]["datafile"]
 	res = BSON.load(data_filename)
 	data_dict = res[:dataset_dict]
 	input_data = data_dict[:input]
 	output_data = data_dict[:output]
+
+	delta_input_flag = config_entry_try(config["system"], "delta_input_flag", false) # flag to indicate training on the delta from each point, i.e.
+	if delta_input_flag
+		output_data = output_data - input_data[1:size(output_data,1),:]
+	end
 
 	results_dir = config["results_directory"]
 	base_results_dir = "$results_dir/base"
@@ -113,7 +128,7 @@ function learn_abstraction(config_file::String)
 		n_states = length(grid)
 		all_states_SA = Vector{SMatrix}(undef, n_states)
 		[all_states_SA[i] = LearningAbstractions.lower_to_SA(grid_lower, grid_spacing) for (i,grid_lower) in enumerate(grid)]
-		all_state_images, all_state_σ_bounds = state_bounds(all_states_SA, gps; local_gps_flag=local_gps_flag, local_gps_data=(input_data, output_data), local_gps_nns=local_gps_nns, domain_type=domain_type)
+		all_state_images, all_state_σ_bounds = state_bounds(all_states_SA, gps; local_gps_flag=local_gps_flag, local_gps_data=(input_data, output_data), local_gps_nns=local_gps_nns, domain_type=domain_type, delta_input_flag=delta_input_flag)
 
 		P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_state_σ_bounds, local_gp_metadata=local_gp_metadata)
 	end

@@ -1,10 +1,10 @@
 # Functions to find the images of discrete states
 
-function state_bounds(states_vec, gps; local_gps_flag=false, local_gps_data=nothing, local_gps_nns=nothing, domain_type="")
+function state_bounds(states_vec, gps; local_gps_flag=false, local_gps_data=nothing, local_gps_nns=nothing, domain_type="", delta_input_flag=false)
  
     odims = length(gps)
     type = SMatrix{odims, 2^odims, Float64, odims*2^odims}
-    image_vec = Vector{type}(undef, length(states_vec)) #! this is incorrect
+    image_vec = Vector{type}(undef, length(states_vec))
     σ_bounds_vec = Vector{Vector{Real}}(undef, length(states_vec))
 
     # Setup all the GP stuff
@@ -33,10 +33,10 @@ function state_bounds(states_vec, gps; local_gps_flag=false, local_gps_data=noth
                 neg_gp.alpha *= -1
                 push!(local_neg_gps, neg_gp)
             end
-            image, σ_bounds = LearningAbstractions.GPBounding.bound_image([state[:,1], state[:,end-1]], local_gps, local_neg_gps) 
+            image, σ_bounds = LearningAbstractions.GPBounding.bound_image([state[:,1], state[:,end-1]], local_gps, local_neg_gps, delta_input_flag=delta_input_flag) 
         
         else
-            image, σ_bounds = LearningAbstractions.GPBounding.bound_image([state[:,1], state[:,end-1]], gps, neg_gps)
+            image, σ_bounds = LearningAbstractions.GPBounding.bound_image([state[:,1], state[:,end-1]], gps, neg_gps, delta_input_flag=delta_input_flag)
         end
         image_vec[idx] = extent_to_SA(image)
         # TODO: Add RKHS-related calculations here for persistence? 
