@@ -178,12 +178,12 @@ function fast_check(mean_pt, mean_target, ϵ_crit, image_radius, set_radius)
 end
 
 function transition_inverval(X,Y; gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_manual=nothing, local_RKHS_bound=nothing, local_gp_metadata=nothing)
-
-    ctrl_idxs = (2,) # ! TODO generalize this if it works
-
+    # Get the dimensions of the states - if control is embedded, modify to only look at state-space
     dims = size(X,1) 
-    Yr = Y[1:dims, 1:dims^2]
-    Y = SMatrix{dims, 2^dims}(Yr)
+    if dims < size(Y,1)
+        Yr = Y[1:dims, 1:dims^2] #! This is erroring out down the line. Why?
+        Y = SMatrix{dims, 2^dims}(Yr)
+    end
 
     # ! Eventually don't need this
     dis = distance(X, Y)
@@ -226,10 +226,12 @@ function transition_inverval(X,Y; gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_ma
     Full or Partial Intersection
     ===#
     if (dis <= 1e-4)
-        # ! Improve the partial intersection case
+        # TODO: Improve the partial intersection case
+        # If the image and target intersect, then the UB probability is 1.0 by default. Then, we want to remove the probability mass of those points that would remove the intersection. 
+        # This is 1.0 - Pr[learning error is larger than max distance between the sets]
+        # By default, rkhs_prob_vector returns a vector with the probability of each component /not/ being epsilon close
         if !isnothing(gp_rkhs_info)
-            # ! unverified, 1.0 - (1.0 - ≤η_2)
-            p̂_vec = chowdhury_rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,2], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata)
+            p̂_vec = rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,2], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata)   
             p̂ = prod(p̂_vec.*Pr_process)
         else
             p̂ = 1.              # UB result for full + partial intersection
@@ -240,8 +242,8 @@ function transition_inverval(X,Y; gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_ma
         ===#
         if containment_flag     
             if !isnothing(gp_rkhs_info)
-                p̂ = 1. # ! Need to fix this case!
-                p̌_vec = chowdhury_rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,1], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata)*prod(Pr_process) 
+                # Upper-bound is the same as above.
+                p̌_vec = rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,1], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata)*prod(Pr_process) 
                 p̌ = prod(p̌_vec.*Pr_process) 
             else
                 p̌ = 1.          
@@ -256,8 +258,8 @@ function transition_inverval(X,Y; gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_ma
         if !isnothing(gp_rkhs_info)
             # ! Unverified
             # These return the probabilities of LEQ -- take the difference 
-            p_leq_lb = chowdhury_rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,1], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata)
-            p_leq_ub = chowdhury_rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,2], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata)
+            p_leq_lb = rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,1], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata)
+            p_leq_ub = rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,2], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata)
             p_interval = (1.0 .- p_leq_lb.*Pr_process) - (1.0 .- p_leq_ub).*(1.0 .- Pr_process)
             p̂ = prod(p_interval) 
         else
@@ -270,26 +272,18 @@ function transition_inverval(X,Y; gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_ma
 end
 
 function dis_fcn!(res, X::SMatrix, Y::SMatrix)
-    for i=1:size(X,1)
-        res[i,1] = minimum(abs.(X[i,:] .- Y[i,:]) ∪ abs.(X[i,:] .- Y[i, end:-1:1]))
-        res[i,2] = maximum(abs.(X[i,:] .- Y[i,:]) ∪ abs.(X[i,:] .- Y[i, end:-1:1]))
+    for i in axes(X,1)
+        res[i,1] = minimum(hcat([abs.(unique(X[i,:]) .- yu) for yu in unique(Y[i,:])]...))
+        res[i,2] = maximum(hcat([abs.(unique(X[i,:]) .- yu) for yu in unique(Y[i,:])]...))
     end
 end
 
 function dis_fcn!(res, X::SVector, Y::SMatrix)
     for i in eachindex(X)
-        res[i,1] = minimum(abs.(X[i] .- Y[i,:]) ∪ abs.(X[i] .- Y[i, end:-1:1]))
-        res[i,2] = maximum(abs.(X[i] .- Y[i,:]) ∪ abs.(X[i] .- Y[i, end:-1:1]))
+        res[i,1] = minimum(hcat([abs.(X[i] .- yu) for yu in unique(Y[i,:])]...))
+        res[i,2] = maximum(hcat([abs.(X[i] .- yu) for yu in unique(Y[i,:])]...))    
     end
 end
-
-# function dis_fcn!(res, X::SVector, Y::Matrix)
-#     for i in eachindex(X)
-#         res[i,1] = minimum(abs.(X[i] .- Y[i,:]) ∪ abs.(X[i] .- Y[i, end:-1:1]))
-#         res[i,2] = maximum(abs.(X[i] .- Y[i,:]) ∪ abs.(X[i] .- Y[i, end:-1:1]))
-#     end
-# end
-
 
 function abs_cdf(pdf, val)
     return cdf(pdf, val) - cdf(pdf, -val)
@@ -384,7 +378,7 @@ function calculate_ϵ_crit(gp_info, σ_bounds; local_RKHS_bound=nothing)
     ϵ = 0.01
     P = 0.0
     while P != 1.0
-        P = chowdhury_rkhs_prob_vector_single(gp_info, σ_bounds, ϵ, local_RKHS_bound=local_RKHS_bound) 
+        P = rkhs_prob_vector_single(gp_info, σ_bounds, ϵ, local_RKHS_bound=local_RKHS_bound) 
         ϵ *= 1.5 
     end
     return ϵ

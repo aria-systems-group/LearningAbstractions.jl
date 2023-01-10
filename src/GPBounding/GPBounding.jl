@@ -65,7 +65,7 @@ function bound_extent_dim(gp, neg_gp, lbf, ubf; approximate_flag=false)
     # if σ_approx_flag
     _, σ_U_lb, σ_U_ub = compute_σ_ub_bounds_approx(gp, lbf, ubf) 
     # elseif !isnothing(σ_ubs)
-    #     _, σ_U_lb, σ_U_ub = compute_σ_ub_bounds_from_gp(gps[i], lbf, ubf, ub=σ_ubs[dim_key])
+    # _, σ_U_lb, σ_U_ub = compute_σ_ub_bounds_from_gp(gp, lbf, ubf)
     # else
     #     _, σ_U_lb, σ_U_ub = compute_σ_ub_bounds(gps[i], gp_info_dict[dim_key].Kinv, lbf, ubf)
     # end
