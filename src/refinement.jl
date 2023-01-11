@@ -30,6 +30,7 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
 	# state_filename = "$results_dir/states.bson"
 	# imdp_filename = "$results_dir/imdp.bson"
 	gps_filename = "$base_results_dir/gps.bson"
+    lipschitz_bound = config["system"]["lipschitz_bound"] 
 
     refinement_dir = isnothing(refinement_dirname) ? "$results_dir/refined" : "$results_dir/$refinement_dirname"
     !isdir(refinement_dir) && mkpath(refinement_dir)
@@ -82,9 +83,9 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
         output_data = data_dict[:output]
         local_gps_data = (input_data, output_data)
         local_gp_metadata = [ones(length(lipschitz_bound)), 0.65*ones(length(lipschitz_bound)), local_gps_nns]
-
     else
         local_gps_data = nothing
+        local_gp_metadata = nothing
     end
 
     if !reloaded_results_flag 
@@ -195,7 +196,7 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
         P̌_hot = P̌_old[hot_idxs, hot_idxs] 
         P̂_hot = P̂_old[hot_idxs, hot_idxs] 
 
-        P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_refined, all_state_images_refined, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_σ_bounds_refined, P̌_hot=P̌_hot, P̂_hot=P̂_hot, target_idxs_dict=target_idxs_dict)
+        P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_refined, all_state_images_refined, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_σ_bounds_refined, P̌_hot=P̌_hot, P̂_hot=P̂_hot, target_idxs_dict=target_idxs_dict, local_gp_metadata=local_gp_metadata)
     end
 
     if config["save_results"] && !reloaded_results_flag
