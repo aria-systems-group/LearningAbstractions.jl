@@ -107,10 +107,11 @@ function generate_pairwise_transitions(states, images; process_noise_dist=nothin
         image = images[i]
         image_radius = norm(image[:,1] - image[:,end-1])/2
         mean_image = all_image_means[i]
+        state_radius = norm(states[i][1:dims,1] - states[i][1:dims,end-1])/2 
+
         if !isnothing(gp_rkhs_info)
             σ_bounds = σ_bounds_all[i]
             # TODO: Generalize the GP kernel
-            state_radius = norm(states[i][1:dims,1] - states[i][1:dims,end-1])/2 
             RKHS_bound_local = gp_rkhs_info.f_sup / sqrt(exp(-1/2*(2*state_radius)^2/exp(0.65)))
             ϵ_crit = calculate_ϵ_crit(gp_rkhs_info, σ_bounds, local_RKHS_bound=RKHS_bound_local)
         else

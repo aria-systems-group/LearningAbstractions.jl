@@ -140,8 +140,6 @@ end
 Save GPs with serialization.
 """
 function save_gps(gps_dict, filename)
-    # Save the GPs for further analysis. 
-    @info "Saving GP regressions to experiment directory..."
     open(filename, "w") do f
         serialize(f, gps_dict)
     end
