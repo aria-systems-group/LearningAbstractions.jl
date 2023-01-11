@@ -17,6 +17,7 @@ using SparseArrays
 using StaticArrays
 using ConvexBodyProximityQueries
 
+using StatsBase
 using Random
 
 global status_bar_period = 30.0

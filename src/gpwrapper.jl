@@ -40,7 +40,7 @@ function condition_gps(input, output; se_params=[0., 0.65], optimize_hyperparame
     ndims = size(input,1)
     odims = size(output,1)  # > get the dims from the output. 
     gps = []
-    subset_idx = data_subset > 0 ? rand(1:size(input,2), data_subset) : 1:size(input,2)
+    subset_idx = data_subset > 0 ? sample(1:size(input,2), data_subset, replace=false) : 1:size(input,2)
     # dim_keys = ["x$i" for i=1:size(input,1)]
     for i=1:odims 
         # Handle data dependency here
