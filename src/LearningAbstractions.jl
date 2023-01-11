@@ -204,28 +204,32 @@ function generate_abstraction(config_filename::String, f_sys; linear_map_flag=fa
 		all_states_SA = Vector{SMatrix}(undef, n_states)
 		[all_states_SA[i] = LearningAbstractions.lower_to_SA(grid_lower, grid_spacing) for (i,grid_lower) in enumerate(grid)]
 		all_state_images = []
+
 		if linear_map_flag
 			@info "Determing the state images with linear mapping"
-		else
-			@info "Determing the state images via sampling with N=$N samples"
-		end
-
-		for state in all_states_SA
-			if linear_map_flag
+			for state in all_states_SA
 				lower = f_sys(state[:,1])
 				upper = f_sys(state[:,end-1])
-			else
-				mt = MersenneTwister(11)
-				N = 1000
+				extent = [[lower[i], upper[i]] for i=1:length(lower)]
+				image = extent_to_SA(extent)
+				push!(all_state_images, image)
+			end
+		else
+			N = 1000
+			@info "Determing the state images via sampling with N=$N samples"
+			mt = MersenneTwister(11)
+			for state in all_states_SA	
 				x_samp = vcat([rand(mt, Uniform(state[i,1], state[i,end-1]), 1, N) for i=1:size(state,1)]...)
 				f_samp = hcat([f_sys(c) for c in eachcol(x_samp)]...)
 				lower = [minimum(v) for v in eachrow(f_samp)]
 				upper = [maximum(v) for v in eachrow(f_samp)]
+				extent = [[lower[i], upper[i]] for i=1:length(lower)]
+				image = extent_to_SA(extent)
+				push!(all_state_images, image)
 			end
-			extent = [[lower[i], upper[i]] for i=1:length(lower)]
-			image = extent_to_SA(extent)
-			push!(all_state_images, image)
 		end
+
+		
 		all_state_σ_bounds = nothing
 	end
 
