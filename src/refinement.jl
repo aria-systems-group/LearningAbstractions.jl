@@ -149,15 +149,14 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
 
         # For all other states, only focus on transitions to states that were refined
         # Iterate over only the hot idxs
-        hot_idxs = setdiff(1:num_states+1, states_to_refine)
+        hot_idxs = get_hot_idxs(num_states+1, states_to_refine)
 
-        # > Fcn: Get all of the hot-idx to new-state transitions that need to be  
         j_dummy = 1 # Need a dummy index to correctly assign target idx dict
         for i in hot_idxs[1:end-1]
             target_idxs = []
 
             # Find all possible transitions according to old matrix 
-            succ_states = findall(x -> x>0., P̂_old[i, 1:end-1]) # yes, got all the successor states
+            succ_states = post(i, P̂_old) # yes, got all the successor states
 
             for state in succ_states 
                 if state in states_to_refine
@@ -173,8 +172,7 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
         
     if !reloaded_states_flag
         @info "Finding the images of the refined states"
-        # > This is refinement-specific
-            # delete the old states
+        # delete the old states
         all_states_refined = copy(all_states_SA)
         all_state_images_refined = copy(all_state_images)
         all_σ_bounds_refined = copy(all_σ_bounds)
@@ -216,6 +214,10 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
     return P̌, P̂, all_states_refined, refinement_dir, all_state_images_refined, all_σ_bounds_refined
 end
 
+function get_hot_idxs(num_states, states_to_refine)
+    return setdiff(1:num_states, states_to_refine)
+end
+
 function find_states_to_refine(P̂, res_mat, all_states; p_threshold=0.95, refine_targets=false, refine_unsafe=false, diameter_threshold=0.0)
 
     n_yes = findall(x -> x>=p_threshold, res_mat[:,3])
@@ -231,7 +233,7 @@ function find_states_to_refine(P̂, res_mat, all_states; p_threshold=0.95, refin
     states_to_refine = []
     
     for n in n_yes
-        poss_states = findall(x -> x>0., P̂[:,n]) 
+        poss_states = pre(n, P̂)
         setdiff!(poss_states, n_yes)
         setdiff!(poss_states, n_no)
         setdiff!(poss_states, states_to_refine)
@@ -240,7 +242,7 @@ function find_states_to_refine(P̂, res_mat, all_states; p_threshold=0.95, refin
 
     if refine_unsafe
         for n in n_no
-            poss_states = findall(x -> x>0., P̂[:,n]) 
+            poss_states = pre(n, P̂)
             setdiff!(poss_states, n_yes)
             setdiff!(poss_states, n_no)
             setdiff!(poss_states, states_to_refine)
@@ -250,7 +252,7 @@ function find_states_to_refine(P̂, res_mat, all_states; p_threshold=0.95, refin
 
     if refine_targets
         for poss_state in states_to_refine 
-            poss_targets = findall(x -> x > 0.0, P̂[poss_state, :])
+            poss_targets = pre(poss_state, P̂)
             setdiff!(poss_targets, n_yes)
             setdiff!(poss_targets, n_no)
             setdiff!(poss_targets, states_to_refine)
