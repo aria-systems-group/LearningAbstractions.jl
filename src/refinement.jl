@@ -73,6 +73,8 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
     # Local GP setup
     local_gps_flag = config["local"]["use_local_gps"]
     local_gps_nns = config["local"]["local_gp_neighbors"]
+    delta_input_flag = config_entry_try(config["system"], "delta_input_flag", false) # flag to indicate training on the delta from each point, i.e.
+
     if local_gps_flag
         @info "Performing local GP regression with $local_gps_nns-nearest neighbors"
         # Reload the data here
@@ -81,6 +83,9 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
         data_dict = res[:dataset_dict]
         input_data = data_dict[:input]
         output_data = data_dict[:output]
+        if delta_input_flag
+            output_data -= input_data[1:size(output_data,1),:]
+        end
         local_gps_data = (input_data, output_data)
         local_gp_metadata = [ones(length(lipschitz_bound)), 0.65*ones(length(lipschitz_bound)), local_gps_nns]
     else
@@ -184,7 +189,7 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
         deleteat!(all_state_images_refined, states_to_refine)
         deleteat!(all_σ_bounds_refined, states_to_refine)
 
-        new_images, new_σ_bounds = state_bounds(new_states_list, gps; local_gps_flag=local_gps_flag, local_gps_data=local_gps_data, local_gps_nns=local_gps_nns, domain_type=domain_type)
+        new_images, new_σ_bounds = state_bounds(new_states_list, gps; local_gps_flag=local_gps_flag, local_gps_data=local_gps_data, local_gps_nns=local_gps_nns, domain_type=domain_type, delta_input_flag=delta_input_flag)
         all_state_images_refined = vcat(all_state_images_refined, new_images)
         all_σ_bounds_refined = vcat(all_σ_bounds_refined, new_σ_bounds)
     end
