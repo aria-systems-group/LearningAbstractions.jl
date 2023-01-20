@@ -29,6 +29,10 @@ function SA_to_polytope()
     nothing
 end
 
+function SA_to_extent(state)
+    return [state[:,1] state[:,end-1]]
+end
+
 function extent_to_SA(extent)
 	ndims = length(extent)
 	ncols = 2^ndims # Probably always 2

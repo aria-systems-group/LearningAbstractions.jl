@@ -1,47 +1,67 @@
 using EnhancedGJK
 import CoordinateTransformations: IdentityTransformation, Translation 
 
+# """
+#     distance
+
+# Calculate the minimum distance between two convex sets. If 0., the sets intersect.
+# """
+# # ! Time to get rid of this function!
+# function distance(X::SMatrix, Y::SMatrix)
+#     n = size(X,1)
+#     dir = @SVector(rand(n)) .- 0.5
+#     # TODO: Can this be made faster?
+
+#     if n == 4 # ! This is incorrect!!!!!!!!
+#         # This is a hacky way to get the distance
+#         s1 = SVector{16}(eachcol(X))
+#         s2 = SVector{16}(eachcol(Y))
+
+#         cache = CollisionCache(s1, s2)
+#         result = gjk!(cache, IdentityTransformation(), IdentityTransformation())
+#         if result.in_collision
+#             return 0.
+#         else
+#             return separation_distance(result)
+#         end
+#     end
+#     return minimum_distance(X, Y, dir, atol=1e-6)
+# end
+
+# """
+#     distance
+
+# Compute the distance between a point and a convex set. If 0., the sets intersect.
+# """
+# function distance(x::SVector, Y::SMatrix)
+#     # Intersects? 
+#     total_dis = 0.0
+#     xinq = [Y[i,1]<=x[i]<= Y[i,end-1] for i in eachindex(x)]
+#     if sum(xinq) != length(x)
+#         dis = [xinq[i] ? 0.0 : min(abs(Y[i,1]-x[i]), abs(Y[i,end-1]-x[i])) for i in eachindex(x)]
+#         total_dis = sqrt(sum([dis[i]^2 for i in eachindex(dis)])) 
+#     end
+#     return total_dis
+# end
+
 """
-    distance
+    intersects
 
-Calculate the minimum distance between two convex sets. If 0., the sets intersect.
+Check if two hyperrectangles intersect (not w/ non-zero measure)
 """
-function distance(X::SMatrix, Y::SMatrix)
-    n = size(X,1)
-    dir = @SVector(rand(n)) .- 0.5
-    # TODO: Can this be made faster?
-
-    if n == 4
-        # This is a hacky way to get the distance
-        s1 = SVector{16}(eachcol(X))
-        s2 = SVector{16}(eachcol(Y))
-
-        cache = CollisionCache(s1, s2)
-        result = gjk!(cache, IdentityTransformation(), IdentityTransformation())
-        if result.in_collision
-            return 0.
-        else
-            return separation_distance(result)
-        end
+function intersects(X, Y)
+    # TODO: Generalize for vector input
+    res = true
+    # project onto each axis - hyperrectangle only
+    for i in axes(X,1)
+         xp_1 = (Y[i,1] ≤ X[i,1] ≤ Y[i,2]) || (Y[i,1] ≤ X[i,2] ≤ Y[i,2]) 
+         xp_2 = (X[i,1] ≤ Y[i,1] ≤ X[i,2]) || (X[i,1] ≤ Y[i,2] ≤ X[i,2])  
+         res = res && (xp_1 || xp_2)
     end
-    return minimum_distance(X, Y, dir, atol=1e-6)
+
+    return res 
 end
 
-"""
-    distance
-
-Compute the distance between a point and a convex set. If 0., the sets intersect.
-"""
-function distance(x::SVector, Y::SMatrix)
-    # Intersects? 
-    total_dis = 0.0
-    xinq = [Y[i,1]<=x[i]<= Y[i,end-1] for i in eachindex(x)]
-    if sum(xinq) != length(x)
-        dis = [xinq[i] ? 0.0 : min(abs(Y[i,1]-x[i]), abs(Y[i,end-1]-x[i])) for i in eachindex(x)]
-        total_dis = sqrt(sum([dis[i]^2 for i in eachindex(dis)])) 
-    end
-    return total_dis
-end
 
 function generate_all_transitions(states, images, full_set; process_noise_dist=nothing, gp_rkhs_info=nothing, σ_bounds_all=nothing, ϵ_manual=nothing, local_gp_metadata=nothing, P̌_hot=nothing, P̂_hot=nothing, target_idxs_dict=nothing)
     num_states = length(states) + 1 # All states plus the unsafe state!
@@ -175,7 +195,8 @@ function transition_inverval(X,Y; process_noise_dist=nothing, gp_rkhs_info=nothi
     end
 
     # ! Eventually don't need this
-    dis = distance(X, Y)
+    # dis = distance(X, Y)
+    intersect_flag = intersects(SA_to_extent(X), SA_to_extent(Y))
 
     #===
     Account for the process nosie, if any
@@ -213,7 +234,7 @@ function transition_inverval(X,Y; process_noise_dist=nothing, gp_rkhs_info=nothi
     #===
     Full or Partial Intersection
     ===#
-    if (dis <= 1e-4)
+    if intersect_flag 
         # TODO: Improve the partial intersection case
         # If the image and target intersect, then the UB probability is 1.0 by default. Then, we want to remove the probability mass of those points that would remove the intersection. 
         # This is 1.0 - Pr[learning error is larger than max distance between the sets]
