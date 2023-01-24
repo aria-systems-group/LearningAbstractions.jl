@@ -15,4 +15,19 @@ using Test
     @test LearningAbstractions.pre(2, [0. 1.; 0. 0.; 0. 0.3]) == [1, 3]
     @test LearningAbstractions.post(3, [0. 1.; 0. 0.; 0. 0.3]) == [2, ]
 
+    # Test the discretization scheme
+    L = [0.0,]
+    U = [1.0,]
+    δ = [0.25]
+    gens = LearningAbstractions.grid_generator(L, U, δ)
+    @test length(gens)[1] == 4
+    @test maximum(gens)[1] == 0.75
+
+    L = [0.0,]
+    U = [1.0,]
+    δ = [0.26]
+    gens = LearningAbstractions.grid_generator(L, U, δ)
+    @test length(gens)[1] == 3
+    @test maximum(gens)[1] == 2. /3
+
 end
