@@ -226,11 +226,11 @@ end
 function find_states_to_refine(P̂, res_mat, all_states; p_threshold=0.95, refine_targets=false, refine_unsafe=false, diameter_threshold=0.0)
 
     n_yes = findall(x -> x>=p_threshold, res_mat[:,3])
-    n_no = findall(x -> x<p_threshold, res_mat[:,4])
+    n_no = findall(x -> x<p_threshold, res_mat[1:end-1,4])
 
     if isempty(n_yes)
         # if nothing is yes, such as in safety, return all states for refinement
-        return Int.(res_mat[1:end-1,1])
+        return setdiff(Int.(res_mat[1:end-1,1]), n_no)
     end
 
     # now n_yes consists of states that satisfy the spec

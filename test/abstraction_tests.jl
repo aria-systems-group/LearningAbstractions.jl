@@ -15,6 +15,8 @@ using Test
     @test LearningAbstractions.pre(2, [0. 1.; 0. 0.; 0. 0.3]) == [1, 3]
     @test LearningAbstractions.post(3, [0. 1.; 0. 0.; 0. 0.3]) == [2, ]
 
+    @test LearningAbstractions.find_states_to_refine(nothing, [1.0 0.0 0.0 1.0; 2.0 0.0 0.0 0.0; 3.0 0.0 0.0 1.0; 4.0 0.0 0.0 0.0], nothing) == [1,3]
+
     # Test the discretization scheme
     L = [0.0,]
     U = [1.0,]
