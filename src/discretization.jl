@@ -8,8 +8,13 @@ Create a grid generator from lower and upper point extremeties with spacing in d
 function grid_generator(L, U, δ)
 	generator = nothing
 	dim_generators = []
+
+    # δ is just the desired discretization - to make it work with the L and U bounds, we can adjust it slightly.
 	for i=1:length(L)
-		push!(dim_generators, (L[i]:δ[i]:U[i])[1:end-1])
+        N_tight = Int(floor((U[i] - L[i])/δ[i]))
+        δ_tight = (U[i] - L[i])/N_tight
+        gen = (L[i]:δ_tight:U[i])
+        push!(dim_generators, gen[1:end-1])
 	end
 
 	generator = Iterators.product(dim_generators...)
@@ -27,6 +32,10 @@ end
 
 function SA_to_polytope()
     nothing
+end
+
+function SA_to_extent(state)
+    return [state[:,1] state[:,end-1]]
 end
 
 function extent_to_SA(extent)

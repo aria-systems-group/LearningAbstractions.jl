@@ -98,3 +98,11 @@ function load_environment_labels(environemnt_filename::String)
     label_fcn = (x; unsafe=false) -> general_label_fcn(x, default_label, unsafe_label, labels_dict, unsafe=unsafe, unsafe_default=false)
     return label_fcn, labels_dict
 end
+
+function post(state_idx, P̂)
+    return findall(x -> x>0., P̂[state_idx, :])
+end
+
+function pre(state_idx, P̂)
+    return findall(x -> x>0., P̂[:, state_idx])
+end

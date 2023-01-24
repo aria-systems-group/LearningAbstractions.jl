@@ -7,17 +7,17 @@ function state_bounds(states_vec, gps; local_gps_flag=false, local_gps_data=noth
     image_vec = Vector{type}(undef, length(states_vec))
     σ_bounds_vec = Vector{Vector{Real}}(undef, length(states_vec))
 
-    # Setup all the GP stuff
-    neg_gps = []
-    for gp in gps
-        neg_gp = deepcopy(gp)
-        neg_gp.alpha *= -1
-        push!(neg_gps, neg_gp)
-    end
-
     # Setup for bounding refined states with local GP regression
     if local_gps_flag
         tree = create_data_tree(local_gps_data[1], domain_type) 
+    else
+        # Setup all the global GP stuff
+        neg_gps = []
+        for gp in gps
+            neg_gp = deepcopy(gp)
+            neg_gp.alpha *= -1
+            push!(neg_gps, neg_gp)
+        end
     end
 
     # Generate new posterior bounds

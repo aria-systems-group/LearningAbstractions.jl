@@ -73,6 +73,8 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
     # Local GP setup
     local_gps_flag = config["local"]["use_local_gps"]
     local_gps_nns = config["local"]["local_gp_neighbors"]
+    delta_input_flag = config_entry_try(config["system"], "delta_input_flag", false) # flag to indicate training on the delta from each point, i.e.
+
     if local_gps_flag
         @info "Performing local GP regression with $local_gps_nns-nearest neighbors"
         # Reload the data here
@@ -81,6 +83,9 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
         data_dict = res[:dataset_dict]
         input_data = data_dict[:input]
         output_data = data_dict[:output]
+        if delta_input_flag
+            output_data -= input_data[1:size(output_data,1),:]
+        end
         local_gps_data = (input_data, output_data)
         local_gp_metadata = [ones(length(lipschitz_bound)), 0.65*ones(length(lipschitz_bound)), local_gps_nns]
     else
@@ -149,15 +154,14 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
 
         # For all other states, only focus on transitions to states that were refined
         # Iterate over only the hot idxs
-        hot_idxs = setdiff(1:num_states+1, states_to_refine)
+        hot_idxs = get_hot_idxs(num_states+1, states_to_refine)
 
-        # > Fcn: Get all of the hot-idx to new-state transitions that need to be  
         j_dummy = 1 # Need a dummy index to correctly assign target idx dict
         for i in hot_idxs[1:end-1]
             target_idxs = []
 
             # Find all possible transitions according to old matrix 
-            succ_states = findall(x -> x>0., P̂_old[i, 1:end-1]) # yes, got all the successor states
+            succ_states = post(i, P̂_old) # yes, got all the successor states
 
             for state in succ_states 
                 if state in states_to_refine
@@ -173,8 +177,7 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
         
     if !reloaded_states_flag
         @info "Finding the images of the refined states"
-        # > This is refinement-specific
-            # delete the old states
+        # delete the old states
         all_states_refined = copy(all_states_SA)
         all_state_images_refined = copy(all_state_images)
         all_σ_bounds_refined = copy(all_σ_bounds)
@@ -186,7 +189,7 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
         deleteat!(all_state_images_refined, states_to_refine)
         deleteat!(all_σ_bounds_refined, states_to_refine)
 
-        new_images, new_σ_bounds = state_bounds(new_states_list, gps; local_gps_flag=local_gps_flag, local_gps_data=local_gps_data, local_gps_nns=local_gps_nns, domain_type=domain_type)
+        new_images, new_σ_bounds = state_bounds(new_states_list, gps; local_gps_flag=local_gps_flag, local_gps_data=local_gps_data, local_gps_nns=local_gps_nns, domain_type=domain_type, delta_input_flag=delta_input_flag)
         all_state_images_refined = vcat(all_state_images_refined, new_images)
         all_σ_bounds_refined = vcat(all_σ_bounds_refined, new_σ_bounds)
     end
@@ -216,14 +219,18 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
     return P̌, P̂, all_states_refined, refinement_dir, all_state_images_refined, all_σ_bounds_refined
 end
 
+function get_hot_idxs(num_states, states_to_refine)
+    return setdiff(1:num_states, states_to_refine)
+end
+
 function find_states_to_refine(P̂, res_mat, all_states; p_threshold=0.95, refine_targets=false, refine_unsafe=false, diameter_threshold=0.0)
 
     n_yes = findall(x -> x>=p_threshold, res_mat[:,3])
-    n_no = findall(x -> x<p_threshold, res_mat[:,4])
+    n_no = findall(x -> x<p_threshold, res_mat[1:end-1,4])
 
     if isempty(n_yes)
         # if nothing is yes, such as in safety, return all states for refinement
-        return Int.(res_mat[1:end-1,1])
+        return setdiff(Int.(res_mat[1:end-1,1]), n_no)
     end
 
     # now n_yes consists of states that satisfy the spec
@@ -231,7 +238,7 @@ function find_states_to_refine(P̂, res_mat, all_states; p_threshold=0.95, refin
     states_to_refine = []
     
     for n in n_yes
-        poss_states = findall(x -> x>0., P̂[:,n]) 
+        poss_states = pre(n, P̂)
         setdiff!(poss_states, n_yes)
         setdiff!(poss_states, n_no)
         setdiff!(poss_states, states_to_refine)
@@ -240,7 +247,7 @@ function find_states_to_refine(P̂, res_mat, all_states; p_threshold=0.95, refin
 
     if refine_unsafe
         for n in n_no
-            poss_states = findall(x -> x>0., P̂[:,n]) 
+            poss_states = pre(n, P̂)
             setdiff!(poss_states, n_yes)
             setdiff!(poss_states, n_no)
             setdiff!(poss_states, states_to_refine)
@@ -250,7 +257,7 @@ function find_states_to_refine(P̂, res_mat, all_states; p_threshold=0.95, refin
 
     if refine_targets
         for poss_state in states_to_refine 
-            poss_targets = findall(x -> x > 0.0, P̂[poss_state, :])
+            poss_targets = pre(poss_state, P̂)
             setdiff!(poss_targets, n_yes)
             setdiff!(poss_targets, n_no)
             setdiff!(poss_targets, states_to_refine)
