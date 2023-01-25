@@ -8,17 +8,18 @@ Create a grid generator from lower and upper point extremeties with spacing in d
 function grid_generator(L, U, δ)
 	generator = nothing
 	dim_generators = []
+    δ_tight = zeros(size(δ))
 
     # δ is just the desired discretization - to make it work with the L and U bounds, we can adjust it slightly.
 	for i=1:length(L)
         N_tight = Int(floor((U[i] - L[i])/δ[i]))
-        δ_tight = (U[i] - L[i])/N_tight
-        gen = (L[i]:δ_tight:U[i])
+        δ_tight[i] = (U[i] - L[i])/N_tight
+        gen = (L[i]:δ_tight[i]:U[i])
         push!(dim_generators, gen[1:end-1])
 	end
 
 	generator = Iterators.product(dim_generators...)
-	return generator
+	return generator, δ_tight
 end
 
 function vertices_to_extents(X)
