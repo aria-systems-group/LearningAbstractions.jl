@@ -118,7 +118,7 @@ function get_local_data_knn(center, x_data, y_data; num_neighbors = 50, tree=not
 
     sub_x_data = x_data[:, sub_idx]
     sub_y_data = y_data[sub_idx]
-    return sub_x_data, sub_y_data 
+    return sub_x_data, sub_y_data, sub_idx 
 end
 
 """
@@ -126,12 +126,13 @@ Create local GPs using k-nearest neighbors to select data.
 """
 function create_local_gps(input, output, center; num_neighbors=75, kernel_params=[0., 0.65], tree=tree)
     new_gps = []
+    sub_idx = nothing 
     for i in axes(output, 1)
-        x_nn, y_nn = get_local_data_knn(center, input, output[i,:], num_neighbors=num_neighbors, tree=tree)
+        x_nn, y_nn, sub_idx = get_local_data_knn(center, input, output[i,:], num_neighbors=num_neighbors, tree=tree)
         push!(new_gps, condition_gp_1dim(x_nn, y_nn; se_params=kernel_params))
     end
 
-    return new_gps
+    return new_gps, sub_idx
 end
 
 """

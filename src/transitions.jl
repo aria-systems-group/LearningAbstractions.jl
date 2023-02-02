@@ -87,9 +87,10 @@ function generate_all_transitions(states, images, full_set; process_noise_dist=n
     end
     @info "Finished generating pairwise transitions."
 
+    p_vec = zeros(size(images[1],1))
     for i in setdiff(1:num_states-1, hot_idx)   # Always calculating transitions to the unsafe set!
         σ_bounds = isnothing(gp_rkhs_info) ? nothing : σ_bounds_all[i]  
-        p̌, p̂ = transition_inverval(images[i], full_set, process_noise_dist=process_noise_dist, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds, ϵ_manual=ϵ_manual, local_gp_metadata=local_gp_metadata) 
+        p̌, p̂ = transition_inverval(images[i], full_set, p_vec, process_noise_dist=process_noise_dist, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds, ϵ_manual=ϵ_manual, local_gp_metadata=local_gp_metadata) 
         P̌[i,end] = 1 - p̂
         P̂[i,end] = 1 - p̌ 
     end 
@@ -153,10 +154,14 @@ function generate_pairwise_transitions(states, images; process_noise_dist=nothin
         # TODO: This is a first whack at doing this in a parallel way - not the best way to do it!
         lk = ReentrantLock()
 
+        nthreads = Threads.nthreads()
+        # Allocate p_rkhs vectors
+        p_rkhs_vec_all = [zeros(dims) for _ in 1:nthreads]
+
         Threads.@threads for j in idxs_to_check
             statep_sa = states[j]
             if fast_check(mean_image, all_state_means[j][1:dims], ϵ_crit, η_crit, image_radius, state_radius) 
-                res = transition_inverval(image, statep_sa, process_noise_dist=process_noise_dist, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds, ϵ_manual=ϵ_manual, local_RKHS_bound=RKHS_bound_local, local_gp_metadata=local_gp_metadata) 
+                res = transition_inverval(image, statep_sa, p_rkhs_vec_all[Threads.threadid()], process_noise_dist=process_noise_dist, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds, ϵ_manual=ϵ_manual, local_RKHS_bound=RKHS_bound_local, local_gp_metadata=local_gp_metadata) 
                 lock(lk) do 
                     P̌[j,i] = res[1]
                 end 
@@ -186,7 +191,7 @@ function fast_check(mean_pt, mean_target, ϵ_crit, η_crit, image_radius, set_ra
     return flag
 end
 
-function transition_inverval(X,Y; process_noise_dist=nothing, gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_manual=nothing, local_RKHS_bound=nothing, local_gp_metadata=nothing)
+function transition_inverval(X,Y,p_rkhs; process_noise_dist=nothing, gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_manual=nothing, local_RKHS_bound=nothing, local_gp_metadata=nothing)
     # Get the dimensions of the states - if control is embedded, modify to only look at state-space
     dims = size(X,1) 
     if dims < size(Y,1)
@@ -240,7 +245,7 @@ function transition_inverval(X,Y; process_noise_dist=nothing, gp_rkhs_info=nothi
         # This is 1.0 - Pr[learning error is larger than max distance between the sets]
         # By default, rkhs_prob_vector returns a vector with the probability of each component /not/ being epsilon close
         if !isnothing(gp_rkhs_info)
-            p̂_vec = rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,2], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata)   
+            p̂_vec = rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,2], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata, p_rkhs=p_rkhs)   
             p̂ = prod(p̂_vec.*Pr_process)
         else
             p̂ = 1.              # UB result for full + partial intersection
@@ -252,7 +257,7 @@ function transition_inverval(X,Y; process_noise_dist=nothing, gp_rkhs_info=nothi
         if containment_flag     
             if !isnothing(gp_rkhs_info)
                 # Upper-bound is the same as above.
-                p̌_vec = rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,1], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata)*prod(Pr_process) 
+                p̌_vec = rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,1], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata, p_rkhs=p_rkhs)*prod(Pr_process) 
                 p̌ = prod(p̌_vec.*Pr_process) 
             else
                 p̌ = 1.          
@@ -267,8 +272,8 @@ function transition_inverval(X,Y; process_noise_dist=nothing, gp_rkhs_info=nothi
         if !isnothing(gp_rkhs_info)
             # ! Unverified
             # These return the probabilities of LEQ -- take the difference 
-            p_leq_lb = rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,1], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata)
-            p_leq_ub = rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,2], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata)
+            p_leq_lb = rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,1], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata, p_rkhs=p_rkhs)
+            p_leq_ub = rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,2], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata, p_rkhs=p_rkhs)
             p_interval = (1.0 .- p_leq_lb.*Pr_process) - (1.0 .- p_leq_ub).*(1.0 .- Pr_process)
             p̂ = prod(p_interval) 
         else

@@ -33,13 +33,13 @@ Generate overapproximations of posterior mean and covariance functions using one
 - `neg_gps` - Vector of GPs with -1*α vector
 - `delta_input_flag` - True uses `x` as the known component 
 """
-function bound_image(extent, gps::Vector{Any}, neg_gps::Vector{Any}; delta_input_flag=false, data_deps=nothing, known_component=nothing, σ_ubs=nothing, σ_approx_flag=false)
+function bound_image(extent, gps::Vector{Any}, neg_gps::Vector{Any}, theta_vec_train_squared, theta_vec, image_prealloc; delta_input_flag=false, data_deps=nothing, known_component=nothing, σ_ubs=nothing, σ_approx_flag=false)
     # TODO: mod keyword handling and document
     ndims = length(gps) 
     image_extent = Vector{Vector{Float64}}(undef, ndims)
     σ_bounds = zeros(ndims) 
     for i=1:ndims 
-        image_extent[i], σ_bounds[i] = bound_extent_dim(gps[i], neg_gps[i], extent[1], extent[2])
+        image_extent[i], σ_bounds[i] = bound_extent_dim(gps[i], neg_gps[i], extent[1], extent[2], theta_vec_train_squared, theta_vec, image_prealloc)
         if delta_input_flag
             image_extent[i][1] += extent[1][i]
             image_extent[i][2] += extent[2][i]
@@ -48,16 +48,17 @@ function bound_image(extent, gps::Vector{Any}, neg_gps::Vector{Any}; delta_input
     return image_extent, σ_bounds
 end
 
-function bound_extent_dim(gp, neg_gp, lbf, ubf; approximate_flag=false)
+function bound_extent_dim(gp, neg_gp, lbf, ubf, theta_vec_train_squared, theta_vec, image_prealloc; approximate_flag=false)
+
     if approximate_flag
         μ_L_lb, μ_U_ub = compute_μ_bounds_approx(gp, lbf, ubf) 
     else
-        _, μ_L_lb, _ = compute_μ_bounds_bnb(gp, lbf, ubf) 
-        _, _, μ_U_ub = compute_μ_bounds_bnb(neg_gp, lbf, ubf, max_flag=true)
+        _, μ_L_lb, _ = compute_μ_bounds_bnb(gp, lbf, ubf, theta_vec_train_squared, theta_vec; image_prealloc=image_prealloc) 
+        _, _, μ_U_ub = compute_μ_bounds_bnb(neg_gp, lbf, ubf, theta_vec_train_squared, theta_vec; image_prealloc=image_prealloc, max_flag=true)
     end
 
     # if σ_approx_flag
-    _, σ_U_lb, σ_U_ub = compute_σ_ub_bounds_approx(gp, lbf, ubf) 
+    _, σ_U_lb, σ_U_ub = compute_σ_ub_bounds_approx(gp, lbf, ubf, preallocs=image_prealloc) 
     # elseif !isnothing(σ_ubs)
     # _, σ_U_lb, σ_U_ub = compute_σ_ub_bounds_from_gp(gp, lbf, ubf)
     # else
@@ -78,27 +79,35 @@ function bound_extent_dim(gp, neg_gp, lbf, ubf; approximate_flag=false)
     return image_extent, σ_U_ub 
 end
 
-function compute_μ_bounds_bnb(gp, x_L, x_U; max_iterations=100, bound_epsilon=1e-2, max_flag=false)
-    # By default, it calculates bounds on the minimum. 
-    theta_vec_train_squared = zeros(gp.nobs);
-    theta_vec = ones(gp.dim) * 1 ./ (2*gp.kernel.ℓ2)
-    for i = 1:gp.nobs
-        @views theta_vec_train_squared[i] = transpose(theta_vec) * (gp.x[:, i].^2)
-    end   
+function compute_μ_bounds_bnb(gp, x_L, x_U, theta_vec_train_squared, theta_vec; max_iterations=100, bound_epsilon=1e-2, max_flag=false, image_prealloc=nothing)
 
-    # Preallocated arrays for memory savings 
-    m_sub = gp.nobs
-    b_i_vec = Array{Float64}(undef, m_sub)
-    dx_L = zeros(gp.dim)
-    dx_U = zeros(gp.dim)
-    H = zeros(gp.dim)
-    f = zeros(1, gp.dim)
-    x_star_h = zeros(gp.dim)
-    vec_h = zeros(2)
-    bi_x_h = zeros(1,gp.dim)
-    α_h = zeros(gp.nobs)
-    K_h = zeros(gp.nobs,1)
-    mu_h = zeros(1,1)
+    # If no preallocation object is provided, preallocate
+    # This could be done more elegantly, but leave it for now...
+    if isnothing(image_prealloc)      
+        dx_L = zeros(gp.dim)
+        dx_U = zeros(gp.dim)
+        H = zeros(gp.dim)
+        f = zeros(1, gp.dim)
+        x_star_h = zeros(gp.dim)
+        vec_h = zeros(2)
+        bi_x_h = zeros(1,gp.dim)
+        b_i_vec = Array{Float64}(undef, gp.nobs)
+        α_h = zeros(gp.nobs)
+        K_h = zeros(gp.nobs,1)
+        mu_h = zeros(1,1)
+    else
+        dx_L = image_prealloc.dx_L 
+        dx_U = image_prealloc.dx_U 
+        H = image_prealloc.H 
+        f = image_prealloc.f 
+        x_star_h = image_prealloc.x_star_h 
+        vec_h = image_prealloc.vec_h 
+        bi_x_h = image_prealloc.bi_x_h 
+        b_i_vec = image_prealloc.b_i_vec 
+        α_h = image_prealloc.α_h 
+        K_h = image_prealloc.K_h 
+        mu_h = image_prealloc.mu_h 
+    end
     
     x_best, lbest, ubest = compute_μ_lower_bound(gp, x_L, x_U, theta_vec_train_squared, theta_vec, b_i_vec, dx_L, dx_U, H, f, x_star_h, vec_h, bi_x_h, α_h, K_h, mu_h, upper_flag=max_flag)
     if max_flag
@@ -159,14 +168,43 @@ function compute_μ_bounds_bnb(gp, x_L, x_U; max_iterations=100, bound_epsilon=1
     return x_best, lbest, ubest 
 end
 
-function compute_σ_ub_bounds(gp, K_inv, x_L, x_U; max_iterations=10, bound_epsilon=1e-4)
+function compute_σ_ub_bounds(gp, K_inv, x_L, x_U, theta_vec_train_squared, theta_vec; max_iterations=10, bound_epsilon=1e-4, image_prealloc=nothing)
     
+    if isnothing(image_prealloc)      # Make the assumption that if one is nothing, they all are.
+        dx_L = zeros(gp.dim)
+        dx_U = zeros(gp.dim)
+        H = zeros(gp.dim)
+        f = zeros(1, gp.dim)
+        x_star_h = zeros(gp.dim)
+        vec_h = zeros(2)
+        bi_x_h = zeros(1,gp.dim)
+        b_i_vec = Array{Float64}(undef, gp.nobs)
+        α_h = zeros(gp.nobs)
+        K_h = zeros(gp.nobs,1)
+        mu_h = zeros(1,1)
+    else
+        dx_L = image_prealloc.dx_L 
+        dx_U = image_prealloc.dx_U 
+        H = image_prealloc.H 
+        f = image_prealloc.f 
+        x_star_h = image_prealloc.x_star_h 
+        vec_h = image_prealloc.vec_h 
+        bi_x_h = image_prealloc.bi_x_h 
+        b_i_vec = image_prealloc.b_i_vec 
+        α_h = image_prealloc.α_h 
+        K_h = image_prealloc.K_h 
+        mu_h = image_prealloc.mu_h 
+    end
+
     lbest = -Inf
     ubest = 1.
     x_best = nothing
     
     candidates = [[(x_L, x_U), lbest, ubest]]
     iterations = 0
+
+    split_regions = nothing
+    x_avg = zeros(gp.dim)
    
     while !isempty(candidates) && iterations < max_iterations
         new_candidates = []
@@ -182,11 +220,16 @@ function compute_σ_ub_bounds(gp, K_inv, x_L, x_U; max_iterations=10, bound_epsi
             
             round_lbest = lbest
             round_ubest = ubest
-            
-            bound_pairs = split_region(extent[1], extent[2])
 
-            for pair in bound_pairs
-                x_ub1, lb1, ub1 = compute_σ_upper_bound(gp, pair[1], pair[2], K_inv)
+            if isnothing(split_regions)
+                split_regions = split_region!(extent[1], extent[2], x_avg) 
+            else
+                split_regions = split_region!(extent[1], extent[2], x_avg, new_regions=split_regions)
+            end  
+            
+
+            for pair in split_regions
+                x_ub1, lb1, ub1 = compute_σ_upper_bound(gp, pair[1], pair[2], K_inv, theta_vec_train_squared, theta_vec, b_i_vec, dx_L, dx_U, H, f, x_star_h, vec_h, bi_x_h, α_h, K_h, mu_h,)
                 
                 if lb1 > lbest
                     lbest = lb1
@@ -228,7 +271,7 @@ function compute_σ_ub_bounds(gp, K_inv, x_L, x_U; max_iterations=10, bound_epsi
         end
         x_L_n = [x_best[i] - delta_x for i=1:length(x_best)]
         x_U_n = [x_best[i] + delta_x for i=1:length(x_best)]
-        x_best, lbest, ubest = compute_σ_upper_bound(gp, x_L_n, x_U_n, K_inv)
+        x_best, lbest, ubest = compute_σ_upper_bound(gp, x_L_n, x_U_n, K_inv, theta_vec_train_squared, theta_vec, b_i_vec, dx_L, dx_U, H, f, x_star_h, vec_h, bi_x_h, α_h, K_h, mu_h,)
         iterations += 1
     end
     
@@ -246,14 +289,22 @@ function compute_μ_bounds_approx(gp, x_L, x_U; N=100)
     return μ_lb, μ_ub 
 end
 
-function compute_σ_ub_bounds_approx(gp, x_L, x_U; N=100)
-    mt = MersenneTwister(11)
-    σ2_best = -Inf
-    # Get N samples uniformly dist.
-    x_samp = vcat([rand(mt, Uniform(x_L[i], x_U[i]), 1, N) for i=1:length(x_L)]...)
-    _, σ2 = predict_f(gp, x_samp)
-    σ2_best = maximum(σ2)
-    return 0., 0., sqrt(σ2_best[1])
+function compute_σ_ub_bounds_approx(gp, x_L, x_U; 
+    preallocs=SigmaPreallocs(Matrix{Float64}(undef, gp.nobs, 1), Matrix{Float64}(undef, 1, 1)), 
+    N=100, 
+    twister = MersenneTwister(11), 
+    x_samp_alloc = Matrix{Float64}(undef, length(x_L), N))
+
+    max_sigma = -Inf
+    for i in eachindex(x_L) 
+        @views x_samp_alloc[i,:] = rand(twister, Uniform(x_L[i], x_U[i]), 1, N)
+    end
+
+    for x_col in eachcol(x_samp_alloc)
+        σ2 = compute_σ_single(gp, hcat(x_col), preallocs)
+        max_sigma = max(max_sigma, σ2)
+    end
+    return 0.0, 0.0, sqrt(max_sigma)
 end
 
 function create_x_matrix(xL, xU, N)
@@ -307,6 +358,14 @@ function predict_μ(gp, xpred, K_h, mu_h)
     # ! Mean zero specialty
     mul!(mu_h, K_h', alpha)
 return mu_h  
+end
+
+function compute_σ_single(gp, x_pred, preallocs)
+    GaussianProcesses.cov!(preallocs.Kcross, gp.kernel, gp.x, x_pred)
+    GaussianProcesses.cov!(preallocs.Kpred, gp.kernel, x_pred, x_pred)
+    Lck = GaussianProcesses.whiten!(gp.cK, preallocs.Kcross)
+    GaussianProcesses.subtract_Lck!(preallocs.Kpred, Lck)
+    return preallocs.Kpred[1]
 end
 
 end # module

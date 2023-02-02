@@ -127,7 +127,7 @@ function compute_σ_upper_bound(gp, x_L, x_U, R_inv)
     return x_σ_ub, sqrt(σ2_lb[1]), σ_ub
 end
 
-function compute_z_intervals(x_i, x_L, x_U, theta_vec::Vector{Float64}, n::Int, dx_L::Vector{Float64}, dx_U::Vector{Float64})
+function compute_z_intervals(x_i, x_L, x_U, theta_vec, n::Int, dx_L::Vector{Float64}, dx_U::Vector{Float64})
     z_i_L = 0.
     dx_L .= (x_i .- x_L).^2       # TODO: This still takes much time, improve further
     dx_U .= (x_i .- x_U).^2
