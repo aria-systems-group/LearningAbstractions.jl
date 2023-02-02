@@ -11,7 +11,7 @@ using Test
     new_states_exp = StaticArraysCore.SMatrix{1, 2, Float64, 2}[[0.0 0.5], [0.5 1.0]] 
     @test new_states == new_states_exp
 
-    @test LearningAbstractions.get_hot_idxs(5, [2, 4]) == [1,3,5]
+    @test LearningAbstractions.get_hot_idxs(5, [2, 4]) == [1, 3, 5]
     @test LearningAbstractions.pre(2, [0. 1.; 0. 0.; 0. 0.3]) == [1, 3]
     @test LearningAbstractions.post(3, [0. 1.; 0. 0.; 0. 0.3]) == [2, ]
 
@@ -20,16 +20,17 @@ using Test
     # Test the discretization scheme
     L = [0.0,]
     U = [1.0,]
-    δ = [0.25]
-    gens = LearningAbstractions.grid_generator(L, U, δ)
+    δ = [0.25,]
+    gens, spacing = LearningAbstractions.grid_generator(L, U, δ)
     @test length(gens)[1] == 4
     @test maximum(gens)[1] == 0.75
+    @test spacing[1] == 0.25 
 
     L = [0.0,]
     U = [1.0,]
-    δ = [0.26]
-    gens = LearningAbstractions.grid_generator(L, U, δ)
+    δ = [0.26,]
+    gens, spacing = LearningAbstractions.grid_generator(L, U, δ)
     @test length(gens)[1] == 3
     @test maximum(gens)[1] == 2. /3
-
+    @test spacing[1] == 1. /3
 end
