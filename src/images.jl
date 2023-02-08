@@ -51,7 +51,6 @@ function state_bounds(states_vec, gps; local_gps_flag=false, local_gps_data=noth
         gp_x = gps[1].x
     end
 
-    @timeit "Preallocations" begin
     # Preallocated arrays for memory savings 
     image_preallocs = [
         ImageBoundPreallocation(
