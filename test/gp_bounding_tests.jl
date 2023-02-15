@@ -81,14 +81,14 @@ using Test
     @test new_regions[4] == [[0.4, 0.4], [0.5, 0.5]]
 
     # Test whole algorithm
-    x_best, lbest, ubest = LearningAbstractions.GPBounding.compute_μ_bounds_bnb(gp, x_L, x_U; max_iterations=100, bound_epsilon=1e-3, max_flag=false)
+    x_best, lbest, ubest = LearningAbstractions.GPBounding.compute_μ_bounds_bnb(gp, x_L, x_U, theta_vec_train_squared, theta_vec; max_iterations=100, bound_epsilon=1e-3, max_flag=false)
     @test x_best[1:2] == [0.3, 0.3]
     @test lbest ≈ 0.10530781575138054
     @test ubest ≈ 0.10579836897133177
 
     gp_neg = deepcopy(gp)
     gp_neg.alpha *= -1.
-    x_best, lbest, ubest = LearningAbstractions.GPBounding.compute_μ_bounds_bnb(gp_neg, x_L, x_U; max_iterations=100, bound_epsilon=1e-3, max_flag=true)
+    x_best, lbest, ubest = LearningAbstractions.GPBounding.compute_μ_bounds_bnb(gp_neg, x_L, x_U, theta_vec_train_squared, theta_vec; max_iterations=100, bound_epsilon=1e-3, max_flag=true)
     @test x_best[1:2] == [0.5, 0.5]
     @test lbest ≈ 0.27140584290770176
     @test ubest ≈ 0.2721145123823942

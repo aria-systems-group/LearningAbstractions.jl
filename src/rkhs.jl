@@ -49,7 +49,7 @@ function rkhs_prob(σ, ϵ, γ_bd, B, logNoise, post_scale_factor)
 	else
 		dbound = 1.0
 	end
-    return minimum([dbound, 1.])
+    return min(dbound, 1.)
 end
 
 """
@@ -57,8 +57,11 @@ end
 
 Calculates the probability of /not/ being ϵ-close for each component
 """
-function rkhs_prob_vector(gp_rkhs_info::GPRelatedInformation, σ_bounds, ϵ; local_RKHS_bound=nothing, local_gp_metadata=nothing)
-	p_rkhs = zeros(length(ϵ))
+function rkhs_prob_vector(gp_rkhs_info::GPRelatedInformation, σ_bounds, ϵ; local_RKHS_bound=nothing, local_gp_metadata=nothing, p_rkhs=nothing)
+
+	if isnothing(p_rkhs)
+		p_rkhs = zeros(length(ϵ))
+	end
 	
 	for i=1:length(σ_bounds)
 		# This calculates the probability of the dynamics being β(δ)*σ close.
@@ -72,7 +75,7 @@ function rkhs_prob_vector(gp_rkhs_info::GPRelatedInformation, σ_bounds, ϵ; loc
 			γ_bound = gp_rkhs_info.γ_bounds[i]	
 		end
 
-		p_rkhs[i] = 1. - rkhs_prob(σ_bounds[i], ϵ[i], 
+		@views p_rkhs[i] = 1. - rkhs_prob(σ_bounds[i], ϵ[i], 
 								   gp_rkhs_info.γ_bounds[i], 
 								   RKHS_bound, 
 								   gp_rkhs_info.logNoise[i], 
@@ -96,7 +99,7 @@ function rkhs_prob_vector_single(gp_rkhs_info, σ_bounds, ϵ; local_RKHS_bound=n
 			γ_bound = gp_rkhs_info.γ_bounds[i]	
 		end
 
-		p_rkhs *= 1. - rkhs_prob(σ_bounds[i], ϵ, 
+		@views p_rkhs *= 1. - rkhs_prob(σ_bounds[i], ϵ, 
 										   gp_rkhs_info.γ_bounds[i], 
 										   RKHS_bound, 
 										   gp_rkhs_info.logNoise[i], 

@@ -1,12 +1,12 @@
 "Computes the lower bound of the posterior mean function of a Gaussian process in an interval."
-function compute_μ_lower_bound(gp::GPE, x_L, x_U, theta_vec_train_squared::Vector{Float64}, theta_vec::Vector{Float64}, 
+function compute_μ_lower_bound(gp, x_L, x_U, theta_vec_train_squared, theta_vec, 
                                b_i_vec::Vector{Float64}, dx_L::Vector{Float64}, dx_U::Vector{Float64}, H::Vector{Float64}, f::Matrix{Float64}, x_star_h::Vector{Float64}, vec_h::Vector{Float64}, bi_x_h::Matrix{Float64}, α_h::Vector{Float64},
                                K_h, mu_h;
                                upper_flag=false)
     # Set minmax_factor to -1 if maximizing
     minmax_factor = upper_flag ? -1. : 1.
     x_train = gp.x # Confirmed
-    n = gp.dim # Dimension of input
+    n = size(x_train,1) # Dimension of input
     α_h .= gp.alpha .* gp.kernel.σ2
     
     H, f, C, a_i_sum = calculate_components(α_h, theta_vec_train_squared, theta_vec, x_train, x_L, x_U, n, b_i_vec, dx_L, dx_U, H, f, bi_x_h)
@@ -25,7 +25,7 @@ function compute_μ_lower_bound(gp::GPE, x_L, x_U, theta_vec_train_squared::Vect
 end
 
 
-function calculate_components(α_train::Vector{Float64}, theta_vec_train_squared::Vector{Float64}, theta_vec::Vector{Float64}, x_train::Matrix{Float64}, x_L, x_U, n::Int, 
+function calculate_components(α_train::Vector{Float64}, theta_vec_train_squared, theta_vec, x_train::Matrix{Float64}, x_L, x_U, n::Int, 
                               b_i_vec::Vector{Float64}, dx_L::Vector{Float64}, dx_U::Vector{Float64}, H::Vector{Float64}, f::Matrix{Float64}, bi_x_h::Matrix{Float64})
     a_i_sum = 0. 
     b_i_vec_sum = 0.
@@ -127,7 +127,7 @@ function compute_σ_upper_bound(gp, x_L, x_U, R_inv)
     return x_σ_ub, sqrt(σ2_lb[1]), σ_ub
 end
 
-function compute_z_intervals(x_i, x_L, x_U, theta_vec::Vector{Float64}, n::Int, dx_L::Vector{Float64}, dx_U::Vector{Float64})
+function compute_z_intervals(x_i, x_L, x_U, theta_vec, n::Int, dx_L::Vector{Float64}, dx_U::Vector{Float64})
     z_i_L = 0.
     dx_L .= (x_i .- x_L).^2       # TODO: This still takes much time, improve further
     dx_U .= (x_i .- x_U).^2

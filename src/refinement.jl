@@ -5,8 +5,8 @@ Refine a discrete state uniformly and update the region info dict.
 """
 function uniform_refinement(state)
     deltas = (state[:,end-1] - state[:,1])/2
-    refined_grid = grid_generator(state[:,1], state[:,end-1], deltas)
-    new_states = [lower_to_SA(gl, deltas) for gl in refined_grid]
+    refined_grid, refined_deltas = grid_generator(state[:,1], state[:,end-1], deltas)
+    new_states = [lower_to_SA(gl, refined_deltas) for gl in refined_grid]
     return new_states
 end
 

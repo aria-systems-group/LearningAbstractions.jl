@@ -12,7 +12,11 @@ import Distances: evaluate
 using StatsBase
 using Distributions
 
+using LinearAlgebra
 using LinearAlgebra: norm, I, nullspace
+using LinearAlgebra: BlasReal, BlasFloat
+using PDMats
+
 using SparseArrays
 using StaticArrays
 using ConvexBodyProximityQueries
@@ -54,8 +58,8 @@ function learn_abstraction(config_filename::String;)
 	domain_type = config["workspace"]["domain_type"]
 	X_extent = [[l u] for (l, u) in zip(L,U)]
 	diameter_domain = sqrt(sum((L-U).^2))
-	grid_spacing = SA_F64[config["discretization"]["grid_spacing"]...]
-	grid = LearningAbstractions.grid_generator(L, U, grid_spacing)
+	desired_spacing = SA_F64[config["discretization"]["grid_spacing"]...]
+	grid, grid_spacing = LearningAbstractions.grid_generator(L, U, desired_spacing)
 	lipschitz_bound = config["system"]["lipschitz_bound"] 
 
 	# Local GP setup
@@ -166,8 +170,8 @@ function generate_abstraction(config_filename::String, f_sys; linear_map_flag=fa
 	L = SA_F64[config["workspace"]["lower"]...]
 	U = SA_F64[config["workspace"]["upper"]...]
 	X_extent = [[l u] for (l, u) in zip(L,U)]
-	grid_spacing = SA_F64[config["discretization"]["grid_spacing"]...]
-	grid = LearningAbstractions.grid_generator(L, U, grid_spacing)
+	desired_spacing = SA_F64[config["discretization"]["grid_spacing"]...]
+	grid, grid_spacing = LearningAbstractions.grid_generator(L, U, desired_spacing)
 
 	# Datafile parsing
 	data_filename = config["system"]["datafile"]
