@@ -12,7 +12,11 @@ import Distances: evaluate
 using StatsBase
 using Distributions
 
+using LinearAlgebra
 using LinearAlgebra: norm, I, nullspace
+using LinearAlgebra: BlasReal, BlasFloat
+using PDMats
+
 using SparseArrays
 using StaticArrays
 using ConvexBodyProximityQueries

@@ -1,12 +1,12 @@
 "Computes the lower bound of the posterior mean function of a Gaussian process in an interval."
-function compute_μ_lower_bound(gp::GPE, x_L, x_U, theta_vec_train_squared, theta_vec, 
+function compute_μ_lower_bound(gp, x_L, x_U, theta_vec_train_squared, theta_vec, 
                                b_i_vec::Vector{Float64}, dx_L::Vector{Float64}, dx_U::Vector{Float64}, H::Vector{Float64}, f::Matrix{Float64}, x_star_h::Vector{Float64}, vec_h::Vector{Float64}, bi_x_h::Matrix{Float64}, α_h::Vector{Float64},
                                K_h, mu_h;
                                upper_flag=false)
     # Set minmax_factor to -1 if maximizing
     minmax_factor = upper_flag ? -1. : 1.
     x_train = gp.x # Confirmed
-    n = gp.dim # Dimension of input
+    n = size(x_train,1) # Dimension of input
     α_h .= gp.alpha .* gp.kernel.σ2
     
     H, f, C, a_i_sum = calculate_components(α_h, theta_vec_train_squared, theta_vec, x_train, x_L, x_U, n, b_i_vec, dx_L, dx_U, H, f, bi_x_h)
