@@ -7,4 +7,5 @@ using Test
     include("gp_bounding_tests3d.jl")
     include("abstraction_tests.jl")
     include("local_gps.jl")
+    include("transitions.jl")
 end

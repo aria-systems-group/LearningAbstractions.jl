@@ -1,32 +1,4 @@
 using EnhancedGJK
-import CoordinateTransformations: IdentityTransformation, Translation 
-
-# """
-#     distance
-
-# Calculate the minimum distance between two convex sets. If 0., the sets intersect.
-# """
-# # ! Time to get rid of this function!
-# function distance(X::SMatrix, Y::SMatrix)
-#     n = size(X,1)
-#     dir = @SVector(rand(n)) .- 0.5
-#     # TODO: Can this be made faster?
-
-#     if n == 4 # ! This is incorrect!!!!!!!!
-#         # This is a hacky way to get the distance
-#         s1 = SVector{16}(eachcol(X))
-#         s2 = SVector{16}(eachcol(Y))
-
-#         cache = CollisionCache(s1, s2)
-#         result = gjk!(cache, IdentityTransformation(), IdentityTransformation())
-#         if result.in_collision
-#             return 0.
-#         else
-#             return separation_distance(result)
-#         end
-#     end
-#     return minimum_distance(X, Y, dir, atol=1e-6)
-# end
 
 # """
 #     distance
@@ -86,7 +58,6 @@ function generate_all_transitions(states, images, full_set; process_noise_dist=n
         P̂[1:num_hot-1, end] = P̂_hot[1:end-1, end]
     end
     @info "Finished generating pairwise transitions."
-
     p_vec = zeros(size(images[1],1))
     for i in setdiff(1:num_states-1, hot_idx)   # Always calculating transitions to the unsafe set!
         σ_bounds = isnothing(gp_rkhs_info) ? nothing : σ_bounds_all[i]  
@@ -191,7 +162,7 @@ function fast_check(mean_pt, mean_target, ϵ_crit, η_crit, image_radius, set_ra
     return flag
 end
 
-function transition_inverval(X,Y,p_rkhs; process_noise_dist=nothing, gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_manual=nothing, local_RKHS_bound=nothing, local_gp_metadata=nothing)
+function transition_inverval(X, Y, p_rkhs; process_noise_dist=nothing, gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_manual=nothing, local_RKHS_bound=nothing, local_gp_metadata=nothing)
     # Get the dimensions of the states - if control is embedded, modify to only look at state-space
     dims = size(X,1) 
     if dims < size(Y,1)
@@ -199,8 +170,6 @@ function transition_inverval(X,Y,p_rkhs; process_noise_dist=nothing, gp_rkhs_inf
         Y = SMatrix{dims, 2^dims}(Yr)
     end
 
-    # ! Eventually don't need this
-    # dis = distance(X, Y)
     intersect_flag = intersects(SA_to_extent(X), SA_to_extent(Y))
 
     #===
@@ -221,7 +190,7 @@ function transition_inverval(X,Y,p_rkhs; process_noise_dist=nothing, gp_rkhs_inf
     end
 
     if !isnothing(gp_rkhs_info) && !isnothing(process_noise_dist) # TODO: Separate process reliance from GP
-        for i=1:dims
+        for i in 1:dims
             Pr_process[i] =  abs_cdf(process_noise_dist, η_manual) # Per dimension, assuming the same on each axis
         end
         η_offset = η_manual
@@ -229,7 +198,7 @@ function transition_inverval(X,Y,p_rkhs; process_noise_dist=nothing, gp_rkhs_inf
         η_offset = 0.
     end
 
-    dis_comps = zeros(size(X,1), 2)
+    dis_comps = zeros(dims, 2)
     dis_fcn!(dis_comps, X, Y)
 
     dis_comps[:,1] .-= η_offset
@@ -245,8 +214,10 @@ function transition_inverval(X,Y,p_rkhs; process_noise_dist=nothing, gp_rkhs_inf
         # This is 1.0 - Pr[learning error is larger than max distance between the sets]
         # By default, rkhs_prob_vector returns a vector with the probability of each component /not/ being epsilon close
         if !isnothing(gp_rkhs_info)
-            p̂_vec = rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,2], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata, p_rkhs=p_rkhs)   
-            p̂ = prod(p̂_vec.*Pr_process)
+            # p̂_vec = rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,2], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata, p_rkhs=p_rkhs)   
+            # @info p̂_vec
+            o = ones(length(Pr_process))
+            p̂ = prod(o.*Pr_process) 
         else
             p̂ = 1.              # UB result for full + partial intersection
         end
@@ -257,7 +228,7 @@ function transition_inverval(X,Y,p_rkhs; process_noise_dist=nothing, gp_rkhs_inf
         if containment_flag     
             if !isnothing(gp_rkhs_info)
                 # Upper-bound is the same as above.
-                p̌_vec = rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,1], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata, p_rkhs=p_rkhs)*prod(Pr_process) 
+                p̌_vec = rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,1], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata)
                 p̌ = prod(p̌_vec.*Pr_process) 
             else
                 p̌ = 1.          
@@ -270,11 +241,10 @@ function transition_inverval(X,Y,p_rkhs; process_noise_dist=nothing, gp_rkhs_inf
     ===#
     else
         if !isnothing(gp_rkhs_info)
-            # ! Unverified
             # These return the probabilities of LEQ -- take the difference 
             p_leq_lb = rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,1], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata, p_rkhs=p_rkhs)
-            p_leq_ub = rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,2], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata, p_rkhs=p_rkhs)
-            p_interval = (1.0 .- p_leq_lb.*Pr_process) - (1.0 .- p_leq_ub).*(1.0 .- Pr_process)
+            # p_leq_ub = rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,2], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata, p_rkhs=p_rkhs)
+            p_interval = (1.0 .- p_leq_lb.*Pr_process) # - (1.0 .- p_leq_ub).*(1.0 .- Pr_process)
             p̂ = prod(p_interval) 
         else
             p̂ = 0. 
@@ -285,7 +255,7 @@ function transition_inverval(X,Y,p_rkhs; process_noise_dist=nothing, gp_rkhs_inf
     return [p̌, p̂]
 end
 
-function dis_fcn!(res, X::SMatrix, Y::SMatrix)
+function dis_fcn!(res, X::AbstractMatrix, Y::AbstractMatrix)
     for i in axes(X,1)
         res[i,1] = minimum(hcat([abs.(unique(X[i,:]) .- yu) for yu in unique(Y[i,:])]...))
         res[i,2] = maximum(hcat([abs.(unique(X[i,:]) .- yu) for yu in unique(Y[i,:])]...))
@@ -309,7 +279,7 @@ function abs_cdf(pdf, val_lb, val_ub)
     return p_ub - p_lb
 end
 
-function containment_check(shape1::SMatrix,shape2::SMatrix, axes=nothing)
+function containment_check(shape1::AbstractMatrix,shape2::AbstractMatrix, axes=nothing)
     int_result = false 
     min_distance = Inf
     n_dims = size(shape1,1)
