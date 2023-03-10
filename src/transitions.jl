@@ -127,7 +127,7 @@ function generate_pairwise_transitions(states, images; process_noise_dist=nothin
 
         Threads.@threads for j in idxs_to_check
             statep_sa = states[j]
-            if true && fast_check(mean_image, all_state_means[j][1:dims], ϵ_crit, η_crit, image_radius, state_radius) 
+            if true || fast_check(mean_image, all_state_means[j][1:dims], ϵ_crit, η_crit, image_radius, state_radius) 
                 res = transition_inverval(image, statep_sa, p_rkhs_vec_all[Threads.threadid()], process_noise_dist=process_noise_dist, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds, ϵ_manual=ϵ_manual, local_RKHS_bound=RKHS_bound_local, local_gp_metadata=local_gp_metadata) 
                 lock(lk) do 
                     P̌[j,i] = res[1]
