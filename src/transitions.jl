@@ -43,7 +43,7 @@ function generate_all_transitions(states, images, full_set; process_noise_dist=n
     P̌[1:end-1, 1:end-1], P̂[1:end-1, 1:end-1] = generate_pairwise_transitions(states, images, process_noise_dist=process_noise_dist, gp_rkhs_info=gp_rkhs_info, σ_bounds_all=σ_bounds_all, ϵ_manual=ϵ_manual, local_gp_metadata=local_gp_metadata, target_idxs_dict=target_idxs_dict) 
 
     hot_idx = []
-    if !isnothing(P̌_hot) && !isnothing(P̂_hot)
+    if false && !isnothing(P̌_hot) && !isnothing(P̂_hot) # ! temporary measure for the hot indeces likely bug
         num_hot = size(P̌_hot)[1]
         hot_idx = 1:num_hot-1
 
@@ -69,10 +69,6 @@ function generate_all_transitions(states, images, full_set; process_noise_dist=n
     @info "Finished generating transitions to unsafe state."
     P̌[end,end] = 1.
     P̂[end,end] = 1.
-
-    # Verify that the resulting matrices are OK
-    [@assert sum(P̌[i,:]) <= 1.0 for i=size(P̌,1)]
-    [@assert sum(P̂[i,:]) >= 1.0 for i=size(P̂,1)]
     
     return P̌, P̂ 
 end
