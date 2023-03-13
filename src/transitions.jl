@@ -43,7 +43,7 @@ function generate_all_transitions(states, images, full_set; process_noise_dist=n
     P̌[1:end-1, 1:end-1], P̂[1:end-1, 1:end-1] = generate_pairwise_transitions(states, images, process_noise_dist=process_noise_dist, gp_rkhs_info=gp_rkhs_info, σ_bounds_all=σ_bounds_all, ϵ_manual=ϵ_manual, local_gp_metadata=local_gp_metadata, target_idxs_dict=target_idxs_dict) 
 
     hot_idx = []
-    if false && !isnothing(P̌_hot) && !isnothing(P̂_hot) # ! temporary measure for the hot indeces likely bug
+    if !isnothing(P̌_hot) && !isnothing(P̂_hot)
         num_hot = size(P̌_hot)[1]
         hot_idx = 1:num_hot-1
 
@@ -100,12 +100,12 @@ function generate_pairwise_transitions(states, images; process_noise_dist=nothin
         image = images[i]
         image_radius = norm(image[:,1] - image[:,end-1])/2
         mean_image = all_image_means[i]
-        state_radius = norm(states[i][1:dims,1] - states[i][1:dims,end-1])/2 
+        state_radius_i = norm(states[i][1:dims,1] - states[i][1:dims,end-1])/2 
 
         if !isnothing(gp_rkhs_info)
             σ_bounds = σ_bounds_all[i]
             # TODO: Generalize the GP kernel
-            RKHS_bound_local = gp_rkhs_info.f_sup / sqrt(exp(-1/2*(2*state_radius)^2/exp(0.65)))
+            RKHS_bound_local = gp_rkhs_info.f_sup / sqrt(exp(-1/2*(2*state_radius_i)^2/exp(0.65)))
             ϵ_crit = calculate_ϵ_crit(gp_rkhs_info, σ_bounds, local_RKHS_bound=RKHS_bound_local)
         else
             σ_bounds = nothing
@@ -125,7 +125,8 @@ function generate_pairwise_transitions(states, images; process_noise_dist=nothin
 
         Threads.@threads for j in idxs_to_check
             statep_sa = states[j]
-            if fast_check(mean_image, all_state_means[j][1:dims], ϵ_crit, η_crit, image_radius, state_radius) 
+            state_radius_j = norm(statep_sa[1:dims,1] - statep_sa[1:dims,end-1])/2 
+            if fast_check(mean_image, all_state_means[j][1:dims], ϵ_crit, η_crit, image_radius, state_radius_j) 
                 res = transition_inverval(image, statep_sa, p_rkhs_vec_all[Threads.threadid()], process_noise_dist=process_noise_dist, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds, ϵ_manual=ϵ_manual, local_RKHS_bound=RKHS_bound_local, local_gp_metadata=local_gp_metadata) 
                 P̌_temp[Threads.threadid()][j,i] = res[1]
                 P̂_temp[Threads.threadid()][j,i] = res[2]
