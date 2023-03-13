@@ -199,7 +199,7 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
         P̌_hot = P̌_old[hot_idxs, hot_idxs] 
         P̂_hot = P̂_old[hot_idxs, hot_idxs] 
 
-        P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_refined, all_state_images_refined, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_σ_bounds_refined, P̌_hot=P̌_hot, P̂_hot=P̂_hot, target_idxs_dict=target_idxs_dict, local_gp_metadata=local_gp_metadata)
+        P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_refined, all_state_images_refined, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_σ_bounds_refined, P̌_hot=P̌_hot, P̂_hot=P̂_hot, target_idxs_dict=nothing, local_gp_metadata=local_gp_metadata)
     end
 
     if config["save_results"] && !reloaded_results_flag
