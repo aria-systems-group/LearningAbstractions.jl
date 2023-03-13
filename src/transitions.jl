@@ -77,8 +77,6 @@ function generate_pairwise_transitions(states, images; process_noise_dist=nothin
 
     dims = size(images[1],1)
     num_states = length(states)
-    P̌ = spzeros(num_states, num_states)
-    P̂ = spzeros(num_states, num_states) 
 
     # calculate state and image means for fast check
     all_state_means = state_means(states)
@@ -90,6 +88,13 @@ function generate_pairwise_transitions(states, images; process_noise_dist=nothin
 
     p = Progress(num_states^2, desc="Computing transition intervals...", dt=status_bar_period)
     η_crit = !isnothing(process_noise_dist) ? calculate_η_crit(process_noise_dist) : 0.0
+
+    nthreads = Threads.nthreads()
+    # Allocate p_rkhs vectors
+    p_rkhs_vec_all = [zeros(dims) for _ in 1:nthreads]
+    # Allocate all temp P̌, P̂ matrices
+    P̌_temp = [spzeros(num_states, num_states) for _ in 1:nthreads]
+    P̂_temp = [spzeros(num_states, num_states) for _ in 1:nthreads]
 
     for i in 1:num_states 
         image = images[i]
@@ -118,29 +123,21 @@ function generate_pairwise_transitions(states, images; process_noise_dist=nothin
             checked_idxs += num_states
         end
 
-        # TODO: This is a first whack at doing this in a parallel way - not the best way to do it!
-        lk = ReentrantLock()
-
-        nthreads = Threads.nthreads()
-        # Allocate p_rkhs vectors
-        p_rkhs_vec_all = [zeros(dims) for _ in 1:nthreads]
-
         Threads.@threads for j in idxs_to_check
             statep_sa = states[j]
             if fast_check(mean_image, all_state_means[j][1:dims], ϵ_crit, η_crit, image_radius, state_radius) 
                 res = transition_inverval(image, statep_sa, p_rkhs_vec_all[Threads.threadid()], process_noise_dist=process_noise_dist, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds, ϵ_manual=ϵ_manual, local_RKHS_bound=RKHS_bound_local, local_gp_metadata=local_gp_metadata) 
-                lock(lk) do 
-                    P̌[j,i] = res[1]
-                end 
-                lock(lk) do 
-                    P̂[j,i] = res[2]
-                end 
+                P̌_temp[Threads.threadid()][j,i] = res[1]
+                P̂_temp[Threads.threadid()][j,i] = res[2]
             else
                 fast_checks += 1
             end
             next!(p)
         end
     end
+
+    P̌ = sum(P̌_temp)
+    P̂ = sum(P̂_temp)
 
     num_trans = num_states^2
     skipped_frac = skipped_idxs / num_trans
