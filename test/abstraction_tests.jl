@@ -33,4 +33,10 @@ using Test
     @test length(gens)[1] == 3
     @test maximum(gens)[1] == 2. /3
     @test spacing[1] == 1. /3
+
+    # dummy state - first col is lower, second-to-last is upper
+    state = [0. 0. 1.0 1.0; 0.0 1.0 1.0 0.0]
+    new_states = LearningAbstractions.uniform_refinement(state)
+    new_state_exp = [0.0 0.5 0.5 0.0; 0.0 0.0 0.5 0.5]
+    @test new_states[1] == new_state_exp
 end
