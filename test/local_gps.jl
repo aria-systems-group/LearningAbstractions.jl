@@ -25,7 +25,7 @@ using Test
     ==#
     nns = 10
     center = [0.; 0.]
-    tree = LearningAbstractions.create_data_tree(x, "") 
+    tree = LearningAbstractions.create_data_tree(x, LearningAbstractions.Euclidean()) 
     y = vcat(y', y') # hack 
 
     # do explicit construction
@@ -85,4 +85,14 @@ using Test
     @test μ_ex[1] ≈ μ_im[1]
     @test σ_ex[1] ≈ σ_im        
     @test σ_ex[1] ≈ σ_ex_s
+
+    # Test out the new distance metric
+    met = LearningAbstractions.GeneralMetric([2], [1.0, 1/2*pi])
+    x = [0.0 0.0; pi/2 -0.99*pi/2]
+    tree = LearningAbstractions.create_data_tree(x, met) 
+
+    # find nearest point
+    x_test = [0.0; 0.0]
+    idxs = LearningAbstractions.select_knn_idxs(x_test, tree, 1)
+    @test idxs[1] == 2
 end

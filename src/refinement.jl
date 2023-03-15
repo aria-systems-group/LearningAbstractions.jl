@@ -22,7 +22,9 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
 	close(f)
 
     num_states = length(all_states_SA)
-    domain_type = config["workspace"]["domain_type"]	
+    angle_dims = config_entry_try(config["workspace"], "angle_dims", [])
+	norm_weights = config_entry_try(config["workspace"], "norm_weights", ones(size(all_states_SA[1],1)))
+    distance_metric = GeneralMetric(angle_dims, norm_weights)
     results_dir = config["results_directory"]
 
     results_dir = config["results_directory"]
@@ -189,7 +191,7 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
         deleteat!(all_state_images_refined, states_to_refine)
         deleteat!(all_σ_bounds_refined, states_to_refine)
 
-        new_images, new_σ_bounds = state_bounds(new_states_list, gps; local_gps_flag=local_gps_flag, local_gps_data=local_gps_data, local_gps_nns=local_gps_nns, domain_type=domain_type, delta_input_flag=delta_input_flag)
+        new_images, new_σ_bounds = state_bounds(new_states_list, gps; local_gps_flag=local_gps_flag, local_gps_data=local_gps_data, local_gps_nns=local_gps_nns, metric=distance_metric, delta_input_flag=delta_input_flag)
         all_state_images_refined = vcat(all_state_images_refined, new_images)
         all_σ_bounds_refined = vcat(all_σ_bounds_refined, new_σ_bounds)
     end

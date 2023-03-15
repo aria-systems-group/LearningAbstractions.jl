@@ -55,7 +55,9 @@ function learn_abstraction(config_filename::String;)
 	# System config parsing
 	L = SA_F64[config["workspace"]["lower"]...]
 	U = SA_F64[config["workspace"]["upper"]...]
-	domain_type = config["workspace"]["domain_type"]
+	angle_dims = config_entry_try(config["workspace"], "angle_dims", [])
+	norm_weights = config_entry_try(config["workspace"], "norm_weights", ones(length(L)))
+	distance_metric = GeneralMetric(angle_dims, norm_weights)
 	X_extent = [[l u] for (l, u) in zip(L,U)]
 	diameter_domain = sqrt(sum((L-U).^2))
 	desired_spacing = SA_F64[config["discretization"]["grid_spacing"]...]
@@ -125,7 +127,7 @@ function learn_abstraction(config_filename::String;)
 		n_states = length(grid)
 		all_states_SA = Vector{SMatrix}(undef, n_states)
 		[all_states_SA[i] = LearningAbstractions.lower_to_SA(grid_lower, grid_spacing) for (i,grid_lower) in enumerate(grid)]
-		all_state_images, all_state_σ_bounds = state_bounds(all_states_SA, gps; local_gps_flag=local_gps_flag, local_gps_data=(input_data, output_data), local_gps_nns=local_gps_nns, domain_type=domain_type, delta_input_flag=delta_input_flag)
+		all_state_images, all_state_σ_bounds = state_bounds(all_states_SA, gps; local_gps_flag=local_gps_flag, local_gps_data=(input_data, output_data), local_gps_nns=local_gps_nns, metric=distance_metric, delta_input_flag=delta_input_flag)
 	end
 
 	if local_gps_flag

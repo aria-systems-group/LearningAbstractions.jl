@@ -53,44 +53,35 @@ function condition_gps(input, output; se_params=[0., 0.65], optimize_hyperparame
 end
 
 """
-Distance Metric for SE(2)
+Distance Metric for General Euclidean with Angles
 """
-struct SE2WeightedEuclidean <: Distances.Metric
+struct GeneralMetric <: Distances.Metric
+    angle_dims
+    weights
 end
 
-# TODO: Need a way to adjust these weights easily
-function se2_weighted_metric(a, b; w=[1,1,pi])
-    ttl = sum((a[1:2].-b[1:2]).^2 .* w[1:2])
-    ttl += min(abs(a[3]- b[3]), abs(2*pi - abs(a[3] - b[3])))/w[3]
+function general_metric(a, b, dist::GeneralMetric)
+
+    dims = length(a)
+    eucl_dims = setdiff(1:dims, dist.angle_dims)
+    ttl = 0
+    for i in eucl_dims
+        ttl += dist.weights[i]*(a[i] - b[i])^2
+    end
+
+    for j in dist.angle_dims
+        ttl += min(abs(a[j]- b[j]), abs(2*pi - abs(a[j] - b[j])))*dist.weights[j]
+    end
+
     return sqrt(ttl)
 end
-evaluate(dist::SE2WeightedEuclidean, a, b) = se2_weighted_metric(a, b)
-
-"""
-Distance Metric for SE(2) + R
-"""
-struct SE2RWeightedEuclidean <: Distances.Metric
-end
-# TODO: Need a way to adjust these weights easily
-function se2R_weighted_metric(a, b; w=[1,1,pi,1])
-    ttl = sum((a[1:2].-b[1:2]).^2 .* w[1:2]) + (a[4] - b[4])^2*w[4]
-    ttl += min(abs(a[3]- b[3]), abs(2*pi - abs(a[3] - b[3])))/w[3]
-    return sqrt(ttl)
-end
-evaluate(dist::SE2RWeightedEuclidean, a, b) = se2R_weighted_metric(a, b)
-
+evaluate(dist::GeneralMetric, a, b) = general_metric(a, b, dist)
 
 """
 Create a tree using the specified metric.
 """
-function create_data_tree(input_data, domain_type) 
-    if domain_type == "se(2)"
-        tree = BallTree(input_data, SE2WeightedEuclidean())
-    elseif domain_type == "se(2)+R"
-        tree = BallTree(input_data, SE2RWeightedEuclidean())
-    else    # default to pure Euclidean distance
-        tree = KDTree(input_data)
-    end
+function create_data_tree(input_data, general_metric::Distances.Metric) 
+    tree = BallTree(input_data, general_metric)
     return tree
 end
 
@@ -101,8 +92,8 @@ function get_local_data_knn(center, x_data, y_data; num_neighbors = 50, tree=not
     num_neighbors = minimum([num_neighbors, size(x_data,2)])
 
     if isnothing(tree)
-        domain_type = ""
-        tree = create_data_tree(input_data, domain_type) 
+        metric = Euclidean()
+        tree = create_data_tree(input_data, metric) 
     end
 
     sub_idx, _ = knn(tree, center, num_neighbors, false)

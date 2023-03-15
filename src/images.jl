@@ -20,7 +20,7 @@ end
 """
 Compute bounds on the image and covariance of a vector of states through a GP map.
 """
-function state_bounds(states_vec, gps; local_gps_flag=false, local_gps_data=nothing, local_gps_nns=nothing, domain_type="", delta_input_flag=false)
+function state_bounds(states_vec, gps; local_gps_flag=false, local_gps_data=nothing, local_gps_nns=nothing, metric=Euclidean(), delta_input_flag=false)
  
     odims = length(gps)
     type = SMatrix{odims, 2^odims, Float64, odims*2^odims}
@@ -29,7 +29,7 @@ function state_bounds(states_vec, gps; local_gps_flag=false, local_gps_data=noth
 
     # Setup for bounding refined states with local GP regression
     if local_gps_flag
-        tree = create_data_tree(local_gps_data[1], domain_type) 
+        tree = create_data_tree(local_gps_data[1], metric) 
         local_neg_gps = [nothing for _ in 1:length(gps)]
     else
         # Setup all the global GP stuff

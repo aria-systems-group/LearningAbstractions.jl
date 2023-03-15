@@ -91,7 +91,7 @@ function iterative_merge(merge_idxs, state_array)
     return merge_dict, new_state_array 
 end
 
-function simple_merge(merge_idxs, state_array, domain_type="")
+function simple_merge(merge_idxs, state_array; metric=Euclidean())
 
     candidate_merge_idxs = copy(merge_idxs)
 
@@ -99,7 +99,7 @@ function simple_merge(merge_idxs, state_array, domain_type="")
     state_mean_vec = LearningAbstractions.state_means(state_array)
 
     # build a KD tree
-    mean_tree = create_data_tree(state_mean_vec, domain_type)
+    mean_tree = create_data_tree(state_mean_vec, metric)
     nns = 2*size(state_array[1], 1) # max number of neighbors is fcn of dimension
 
     idxs_merged = [] 
