@@ -62,6 +62,20 @@ function state_bounds(states_vec, gps; local_gps_flag=false, local_gps_data=noth
     else
         gpnobs = gps[1].nobs
         gp_x = gps[1].x
+        
+        # create Posterior GPs from GaussianProcesses GPs
+        post_gps = [PosteriorBounds.PosteriorGP(
+            gpdim,
+            gpnobs,
+            gp_x, 
+            gps[i].cK,
+            Matrix{Float64}(undef, gpnobs, gpnobs),
+            UpperTriangular(zeros(gpnobs, gpnobs)),
+            Matrix(inv(deepcopy(gps[i].cK))),
+            gps[i].alpha, 
+            SEKernel(gps[i].kernel.σ2, gps[i].kernel.ℓ2),   # TODO: Generalize for any kernel
+        ) for i in eachindex(gps)]
+        [PosteriorBounds.compute_factors!(gp) for gp in post_gps]
     end
 
     # Preallocated arrays for memory savings 
@@ -91,7 +105,7 @@ function state_bounds(states_vec, gps; local_gps_flag=false, local_gps_data=noth
             @views theta_vec_train_sq_sub = [theta_vec_train_squared_all[i][local_gps[tid].sub_idxs] for i=1:odims]
             image, σ_bounds = bound_image([state[:,1], state[:,end-1]], local_gps[tid].gps, local_neg_gps, theta_vec_train_sq_sub, theta_vec_all, image_prealloc, delta_input_flag=delta_input_flag, approximate_σ_flag=approximate_σ_flag) 
         else
-            image, σ_bounds = bound_image([state[:,1], state[:,end-1]], gps, neg_gps, theta_vec_train_squared_all, theta_vec_all, image_prealloc, delta_input_flag=delta_input_flag, approximate_σ_flag=approximate_σ_flag)
+            image, σ_bounds = bound_image([state[:,1], state[:,end-1]], post_gps, neg_gps, theta_vec_train_squared_all, theta_vec_all, image_prealloc, delta_input_flag=delta_input_flag, approximate_σ_flag=approximate_σ_flag)
         end
         image_vec[idx] = extent_to_SA(image)
         σ_bounds_vec[idx] = σ_bounds
@@ -133,27 +147,18 @@ function bound_extent_dim(gp, neg_gp, lbf, ubf, theta_vec_train_squared, theta_v
     else
         _, μ_L_lb, _ = PosteriorBounds.compute_μ_bounds_bnb(gp, lbf, ubf, theta_vec_train_squared, theta_vec; prealloc=image_prealloc) 
         if typeof(gp) == LocalGP
-            # gp.alpha[:] .*= -1
             _, _, μ_U_ub = PosteriorBounds.compute_μ_bounds_bnb(gp, lbf, ubf, theta_vec_train_squared, theta_vec; prealloc=image_prealloc, max_flag=true)
-            # gp.alpha[:] .*= -1
         else
-            _, _, μ_U_ub = PosteriorBounds.compute_μ_bounds_bnb(gp, lbf, ubf, theta_vec_train_squared, theta_vec; prealloc=image_prealloc, max_flag=false)
+            _, _, μ_U_ub = PosteriorBounds.compute_μ_bounds_bnb(gp, lbf, ubf, theta_vec_train_squared, theta_vec; prealloc=image_prealloc, max_flag=true)
         end
     end
 
     if approximate_σ_flag
         _, σ_U_lb, σ_U_ub = PosteriorBounds.compute_σ_ub_bounds_approx(gp, lbf, ubf) 
     else
-        if typeof(gp) == PosteriorGP 
-            Kinv = gp.K_inv
-        else
-            Kinv = inv(gp.cK.mat + exp(gp.logNoise.value)^2*I)
-        end
-        _, σ_U_lb, σ_U_ub = PosteriorBounds.compute_σ_bounds(gp, lbf, ubf, theta_vec_train_squared, theta_vec, Kinv, prealloc=image_prealloc)
+        _, σ_U_lb, σ_U_ub = PosteriorBounds.compute_σ_bounds(gp, lbf, ubf, theta_vec_train_squared, theta_vec, gp.K_inv, prealloc=image_prealloc)
     end
-    # elseif !isnothing(σ_ubs)
-    # _, σ_U_lb, σ_U_ub = compute_σ_ub_bounds_from_gp(gp, lbf, ubf)
-    # else
+
     if !(μ_L_lb <= μ_U_ub)
         @error "μ LB is greater than μ UB! ", μ_L_lb, μ_U_ub
         throw("aborting") 
