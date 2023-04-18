@@ -1,21 +1,3 @@
-using EnhancedGJK
-
-# """
-#     distance
-
-# Compute the distance between a point and a convex set. If 0., the sets intersect.
-# """
-# function distance(x::SVector, Y::SMatrix)
-#     # Intersects? 
-#     total_dis = 0.0
-#     xinq = [Y[i,1]<=x[i]<= Y[i,end-1] for i in eachindex(x)]
-#     if sum(xinq) != length(x)
-#         dis = [xinq[i] ? 0.0 : min(abs(Y[i,1]-x[i]), abs(Y[i,end-1]-x[i])) for i in eachindex(x)]
-#         total_dis = sqrt(sum([dis[i]^2 for i in eachindex(dis)])) 
-#     end
-#     return total_dis
-# end
-
 """
     intersects
 

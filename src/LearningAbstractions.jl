@@ -19,7 +19,6 @@ using PDMats
 
 using SparseArrays
 using StaticArrays
-using ConvexBodyProximityQueries
 
 using PosteriorBounds
 
