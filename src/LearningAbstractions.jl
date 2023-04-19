@@ -19,7 +19,8 @@ using PDMats
 
 using SparseArrays
 using StaticArrays
-using ConvexBodyProximityQueries
+
+using PosteriorBounds
 
 using StatsBase
 using Random
@@ -27,7 +28,6 @@ using Random
 global status_bar_period = 30.0
 
 include("gpwrapper.jl")
-include("GPBounding/GPBounding.jl")
 include("rkhs.jl")
 include("discretization.jl")
 include("images.jl")
@@ -68,6 +68,7 @@ function learn_abstraction(config_filename::String;)
 	local_gps_flag = config["local"]["use_local_gps"]
 	local_gps_nns = config["local"]["local_gp_neighbors"]
 	full_gp_subset = config["local"]["full_gp_subset"]
+	approximate_σ_flag = config_entry_try(config["system"], "approximate_sigma", false)
 	local_gp_metadata = nothing
 
 	# Datafile parsing
@@ -127,7 +128,7 @@ function learn_abstraction(config_filename::String;)
 		n_states = length(grid)
 		all_states_SA = Vector{SMatrix}(undef, n_states)
 		[all_states_SA[i] = LearningAbstractions.lower_to_SA(grid_lower, grid_spacing) for (i,grid_lower) in enumerate(grid)]
-		all_state_images, all_state_σ_bounds = state_bounds(all_states_SA, gps; local_gps_flag=local_gps_flag, local_gps_data=(input_data, output_data), local_gps_nns=local_gps_nns, metric=distance_metric, delta_input_flag=delta_input_flag)
+		all_state_images, all_state_σ_bounds = state_bounds(all_states_SA, gps; local_gps_flag=local_gps_flag, local_gps_data=(input_data, output_data), local_gps_nns=local_gps_nns, metric=distance_metric, delta_input_flag=delta_input_flag, approximate_σ_flag=approximate_σ_flag)
 	end
 
 	if local_gps_flag

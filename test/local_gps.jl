@@ -4,6 +4,8 @@ using GaussianProcesses
 using Random
 using Test
 
+using PosteriorBounds
+
 @testset "Local GPs Implicit and Explicit" begin
 
     # Initialize the GP
@@ -36,55 +38,44 @@ using Test
     Local GP Implicit
     ==#
     gpnobs = nns 
-    local_gp_implicit = LearningAbstractions.GPBounding.LocalGP(
+    gpdim = 2
+    local_gp_implicit = LearningAbstractions.LocalGP(
         Vector{Int}(undef, gpnobs),
-        gp_explicit.x[:, 1:nns], 
-        Vector{Float64}(undef, gpnobs), 
-        Matrix{Float64}(undef, gpnobs, gpnobs),
-        Matrix{Float64}(undef, gpnobs, gpnobs),
-        UpperTriangular(zeros(gpnobs, gpnobs)),
-        Symmetric(Matrix{Float64}(undef, gpnobs, gpnobs)),
-        gp_explicit.kernel,
-        Vector{Float64}(undef, gpnobs)
-    ) 
+        Vector{Float64}(undef, gpnobs),
+        [PosteriorBounds.PosteriorGP(
+            gpdim,
+            gpnobs,
+            x[:,1:gpnobs], 
+            Matrix{Float64}(undef, gpnobs, gpnobs),
+            Matrix{Float64}(undef, gpnobs, gpnobs),
+            UpperTriangular(zeros(gpnobs, gpnobs)),
+            Symmetric(Matrix{Float64}(undef, gpnobs, gpnobs)),
+            Vector{Float64}(undef, gpnobs), 
+            SEKernel(gp_explicit.kernel.σ2, gp_explicit.kernel.ℓ2)
+        )]
+    )
 
-    LearningAbstractions.create_local_gps!([local_gp_implicit], [gp_explicit], center, tree, x, y) 
+    LearningAbstractions.create_local_gps!(local_gp_implicit, [gp_explicit], center, tree, x, y) 
 
     @test sub_idxs == local_gp_implicit.sub_idxs
-    @test local_gp_explicit.cK ≈ local_gp_implicit.cK
+    @test local_gp_explicit.cK ≈ local_gp_implicit.gps[1].cK
 
     K_h = zeros(nns,1)
     mu_h = zeros(1,1)
+    σ2_h = zeros(1,1)
 
     # test prediction
-    gpdim = 2
-    preallocs = LearningAbstractions.ImageBoundPreallocation(
-            Array{Float64}(undef, gpdim),
-            Array{Float64}(undef, gpdim),
-            Array{Float64}(undef, gpdim),
-            Array{Float64}(undef, (1, gpdim)),
-            Array{Float64}(undef, gpdim),
-            Array{Float64}(undef, 2),
-            Array{Float64}(undef, gpnobs),
-            Array{Float64}(undef, (1,gpdim)),
-            Array{Float64}(undef, gpnobs),
-            Array{Float64}(undef, (gpnobs,1)),
-            Array{Float64}(undef, (1,1)),
-            Array{Float64}(undef, (gpnobs, 1)), 
-            Array{Float64}(undef, (1, 1))
-        )
+    preallocs = PosteriorBounds.preallocate_matrices(gpdim, gpnobs)
 
     x_pred = rand(2,1)
-    μ_ex, σ_ex = predict_f(local_gp_explicit, hcat(x_pred))
-    μ_im = LearningAbstractions.GPBounding.predict_μ(local_gp_implicit, x_pred, K_h, mu_h)
+    μ_ex, σ2_ex = predict_f(local_gp_explicit, hcat(x_pred))
+    μ_im = PosteriorBounds.compute_μ!(mu_h, K_h, local_gp_implicit.gps[1], x_pred)
 
-    @test local_gp_explicit.alpha ≈ local_gp_implicit.alpha
+    @test local_gp_explicit.alpha ≈ local_gp_implicit.gps[1].alpha
 
-    σ_im = LearningAbstractions.GPBounding.compute_σ_single(local_gp_implicit, x_pred, preallocs)
-    σ_ex_s = LearningAbstractions.GPBounding.compute_σ_single(local_gp_explicit, x_pred, preallocs) 
+    σ2_im = PosteriorBounds.compute_σ2!(σ2_h, local_gp_implicit.gps[1], x_pred)
     @test μ_ex[1] ≈ μ_im[1]
-    @test σ_ex[1] ≈ σ_im        
-    @test σ_ex[1] ≈ σ_ex_s
+    @test σ2_ex[1] ≈ σ2_im 
 
     # Test out the new distance metric
     met = LearningAbstractions.GeneralMetric([2], [1.0, 1/2*pi])

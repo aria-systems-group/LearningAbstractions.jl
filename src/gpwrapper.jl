@@ -152,18 +152,18 @@ Create local GPs using preallocations for components via k-nearest neighbors dat
 function create_local_gps!(preallocs, global_gps, center, tree, x, y)
     for i in eachindex(global_gps)
         # Get k nearest datapoints
-        @views select_knn_idxs!(preallocs[i].sub_idxs, preallocs[i].knn_dists, center, tree)
-        @views preallocs[i].x[:] = x[:, preallocs[i].sub_idxs]
+        @views select_knn_idxs!(preallocs.sub_idxs, preallocs.knn_dists, center, tree)
+        @views preallocs.gps[i].x[:] = x[:, preallocs.sub_idxs]
         # Update the cK matrix with local data
-        update_cK_SE!(preallocs[i].cK, preallocs[i].x, global_gps[i].kernel.σ2, global_gps[i].kernel.ℓ2; σgp2=exp(global_gps[i].logNoise.value)^2)
+        update_cK_SE!(preallocs.gps[i].cK, preallocs.gps[i].x, global_gps[i].kernel.σ2, global_gps[i].kernel.ℓ2; σgp2=exp(global_gps[i].logNoise.value)^2)
         # Calculate cholesky decomp. of cK in place
-        preallocs[i].cKchol[:] = preallocs[i].cK
-        cholesky!(preallocs[i].cKchol) 
-        preallocs[i].cKcholut.data[:] = preallocs[i].cKchol
+        preallocs.gps[i].cKchol[:] = preallocs.gps[i].cK
+        cholesky!(preallocs.gps[i].cKchol) 
+        preallocs.gps[i].cKcholut.data[:] = preallocs.gps[i].cKchol
         # Calculate the inverse of cK and α vector
-        preallocs[i].cKinv.data[:] = preallocs[i].cK
-        inv!(preallocs[i].cKinv)
-        mul!(preallocs[i].alpha, preallocs[i].cKinv, y[i, preallocs[i].sub_idxs])
+        preallocs.gps[i].K_inv.data[:] = preallocs.gps[i].cK
+        inv!(preallocs.gps[i].K_inv)
+        mul!(preallocs.gps[i].alpha, preallocs.gps[i].K_inv, y[i, preallocs.sub_idxs])
     end
     return 
 end
