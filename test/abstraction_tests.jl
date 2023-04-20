@@ -39,4 +39,12 @@ using Test
     new_states = LearningAbstractions.uniform_refinement(state)
     new_state_exp = [0.0 0.5 0.5 0.0; 0.0 0.0 0.5 0.5]
     @test new_states[1] == new_state_exp
+
+    state = [0. 0. 1.0 1.0; 0.0 1.0 1.0 0.0]
+    idx_refine = 2
+    new_states = LearningAbstractions.dimension_refinement(state, idx_refine)
+    new_state_exp1 = [0.0 1.0 1.0 0.0; 0.0 0.0 0.5 0.5]
+    new_state_exp2 = [0.0 1.0 1.0 0.0; 0.5 0.5 1.0 1.0]
+    @test new_states[1] == new_state_exp1
+    @test new_states[2] == new_state_exp2
 end

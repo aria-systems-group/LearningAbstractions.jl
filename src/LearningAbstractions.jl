@@ -36,6 +36,7 @@ include("transitions.jl")
 include("imdptools.jl")
 include("merging.jl")
 include("output.jl")
+include("parse.jl")
 
 function config_entry_try(dict, key, default_value)
 	res = default_value
@@ -51,18 +52,13 @@ function learn_abstraction(config_filename::String;)
 	f = open(config_filename)
 	config = TOML.parse(f)
 	close(f)
-	
-	# System config parsing
-	L = SA_F64[config["workspace"]["lower"]...]
-	U = SA_F64[config["workspace"]["upper"]...]
-	angle_dims = config_entry_try(config["workspace"], "angle_dims", [])
-	norm_weights = config_entry_try(config["workspace"], "norm_weights", ones(length(L)))
-	distance_metric = GeneralMetric(angle_dims, norm_weights)
-	X_extent = [[l u] for (l, u) in zip(L,U)]
-	diameter_domain = sqrt(sum((L-U).^2))
-	desired_spacing = SA_F64[config["discretization"]["grid_spacing"]...]
+
+	# Parse discretization params
+	L, U, X_extent, desired_spacing, _ = parse_discretization_params(config["workspace"])	
 	grid, grid_spacing = LearningAbstractions.grid_generator(L, U, desired_spacing)
-	lipschitz_bound = config["system"]["lipschitz_bound"] 
+
+	# System config parsing
+	distance_metric, lipschitz_bound = parse_system_params(config["system"])
 
 	# Local GP setup
 	local_gps_flag = config["local"]["use_local_gps"]
@@ -72,37 +68,8 @@ function learn_abstraction(config_filename::String;)
 	local_gp_metadata = nothing
 
 	# Datafile parsing
-	data_filename = config["system"]["datafile"]
-	res = BSON.load(data_filename)
-	data_dict = res[:dataset_dict]
-	input_data = data_dict[:input]
-	output_data = data_dict[:output]
-	if data_dict[:noise]["measurement_std"] > 0.0 && data_dict[:noise]["process_std"] > 0.0
-		@error "Only one of either measurement or process noise is supported."	
-	end
-	σ_noise = max(data_dict[:noise]["measurement_std"], data_dict[:noise]["process_std"]) # One of these is zero, so take which one is not
-	process_noise_flag = data_dict[:noise]["process_std"] > 0.0 
-
-	if process_noise_flag
-		noise_config = data_dict[:noise] 
-		process_noise_dist = create_noise_dist(noise_config)
-		@info "System has process noise"
-	else
-		process_noise_dist = nothing
-		@info "System has measurement noise"
-	end
-
-	delta_input_flag = config_entry_try(config["system"], "delta_input_flag", false) # flag to indicate training on the delta from each point, i.e.
-	if delta_input_flag
-		output_data -= input_data[1:size(output_data,1),:]
-	end
-
-	results_dir = config["results_directory"]
-	base_results_dir = "$results_dir/base"
-	mkpath(base_results_dir)
-	state_filename = "$base_results_dir/states.bson"
-	imdp_filename = "$base_results_dir/imdp.bson"
-	gps_filename = "$base_results_dir/gps.bson"
+	input_data, output_data, σ_noise, delta_input_flag, process_noise_flag, process_noise_dist = parse_data_params(config["system"], load_data=true)
+	base_results_dir, state_filename, imdp_filename, gps_filename = parse_results_params(config)
 	
 	all_states_SA, all_state_images, all_state_σ_bounds, P̌, P̂ = load_results(state_filename, imdp_filename, reuse_states=config["reuse_states"], reuse_results=config["reuse_results"])
 	reloaded_states_flag = !isnothing(all_states_SA)
@@ -162,43 +129,20 @@ function learn_abstraction(config_filename::String;)
 	return P̌, P̂, all_states_SA, base_results_dir, all_state_images, all_state_σ_bounds
 end
 
-function generate_abstraction(config_filename::String, f_sys; linear_map_flag=false)	# System function f
-
-	# > 0. Get the deets from the config files
+function generate_abstraction(config_filename::String, f_sys; linear_map_flag=false, states_to_refine=[], state_defs=nothing)	# System function f
 	f = open(config_filename)
 	config = TOML.parse(f)
 	close(f)
-	
-	# System config parsing
-	L = SA_F64[config["workspace"]["lower"]...]
-	U = SA_F64[config["workspace"]["upper"]...]
-	X_extent = [[l u] for (l, u) in zip(L,U)]
-	desired_spacing = SA_F64[config["discretization"]["grid_spacing"]...]
+
+	# Parse discretization params
+	L, U, X_extent, desired_spacing, refinement_procedure = parse_discretization_params(config["workspace"])	
 	grid, grid_spacing = LearningAbstractions.grid_generator(L, U, desired_spacing)
 
-	# Datafile parsing
-	data_filename = config["system"]["datafile"]
-	res = BSON.load(data_filename)
-	data_dict = res[:dataset_dict]
-	if data_dict[:noise]["measurement_std"] > 0.0 && data_dict[:noise]["process_std"] > 0.0
-		@error "Only one of either measurement or process noise is supported."	
-	end
-	process_noise_flag = data_dict[:noise]["process_std"] > 0.0 
+	# Parse data config
+	process_noise_dist = parse_data_params(config["system"])
 
-	if process_noise_flag
-		noise_config = data_dict[:noise] 
-		process_noise_dist = create_noise_dist(noise_config)
-		@info "System has process noise"
-	else
-		process_noise_dist = nothing
-		@info "System has measurement noise"
-	end
-
-	results_dir = config["results_directory"]
-	base_results_dir = "$results_dir/known_system"
-	mkpath(base_results_dir)
-	state_filename = "$base_results_dir/states.bson"
-	imdp_filename = "$base_results_dir/imdp.bson"
+	# Parse results config
+	base_results_dir, state_filename, imdp_filename, _ = parse_results_params(config)
 
 	all_states_SA, all_state_images, all_state_σ_bounds, P̌, P̂ = load_results(state_filename, imdp_filename, reuse_states=config["reuse_states"], reuse_results=config["reuse_results"])
 	reloaded_states_flag = !isnothing(all_states_SA)
@@ -235,7 +179,6 @@ function generate_abstraction(config_filename::String, f_sys; linear_map_flag=fa
 				push!(all_state_images, image)
 			end
 		end
-
 		
 		all_state_σ_bounds = nothing
 	end

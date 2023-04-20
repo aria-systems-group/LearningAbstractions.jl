@@ -11,6 +11,63 @@ function uniform_refinement(state)
 end
 
 """
+    dimension_refinement
+
+Refine a discrete state along the specified dimension.
+"""
+function dimension_refinement(state, idx)
+    # target a certain dimension for refinement
+    deltas = Vector((state[:,end-1] - state[:,1]))
+    deltas[idx] *= 0.5
+    refined_grid, refined_deltas = grid_generator(state[:,1], state[:,end-1], deltas)
+    new_states = [lower_to_SA(gl, refined_deltas) for gl in refined_grid]
+    return new_states
+end
+
+function sek(x, y, σ2=1.0, ℓ2=1.0)
+    return σ2*exp(-(x-y)'*(x-y)/(2*ℓ2))
+end
+
+function dμdx(x, gp)
+    x_in = gp.x
+    α = gp.alpha
+    d = sum([[(x - xp)*sek(x,xp)*a] for (xp, a) in zip(eachcol(x_in), α)])
+    return abs.(d...)
+    # return d
+end
+
+function max_derivative_dim(x, gp)
+    partials = dμdx(x,gp)
+    max_val, idx = findmax(partials)
+    return max_val, idx
+end
+
+"""
+    gp_derivative_refinement
+
+Refinement based on the GP derivative.
+"""
+function gp_derivative_refinement(state, image, gps)
+    state_mean = state_means([state])[1]
+    # @info image[:,end-1] - image[:,1] 
+    res, max_image_idx = findmax(image[:,end-1] - image[:,1])
+    # @info res, max_image_idx
+
+    state_dels = state[:,end-1] - state[:,1]
+
+    #! Create Local GP Here?
+    #! Or just base on global GPs eh?
+    # _, max_idx = max_derivative_dim(state_mean, gps[max_image_idx])
+    partials = dμdx(state_mean, gps[max_image_idx])
+    # @info partials
+    weighted = (state_dels .* partials) / sum(state_dels)
+    # @info state_dels
+    # @info weighted
+    _, max_idx = findmax(weighted)
+    new_states = dimension_refinement(state, max_idx)
+    return new_states
+end
+"""
     refine_abstraction
 
 Refine the abstraction.
@@ -22,18 +79,13 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
 	close(f)
 
     num_states = length(all_states_SA)
-    angle_dims = config_entry_try(config["workspace"], "angle_dims", [])
-	norm_weights = config_entry_try(config["workspace"], "norm_weights", ones(size(all_states_SA[1],1)))
-    distance_metric = GeneralMetric(angle_dims, norm_weights)
-    results_dir = config["results_directory"]
+	# System config parsing
+	distance_metric, lipschitz_bound = parse_system_params(config["system"])
 
+    # TODO: Put this stuff in the directory generator?
     results_dir = config["results_directory"]
 	base_results_dir = "$results_dir/base"
-	# state_filename = "$results_dir/states.bson"
-	# imdp_filename = "$results_dir/imdp.bson"
 	gps_filename = "$base_results_dir/gps.bson"
-    lipschitz_bound = config["system"]["lipschitz_bound"] 
-
     refinement_dir = isnothing(refinement_dirname) ? "$results_dir/refined" : "$results_dir/$refinement_dirname"
     !isdir(refinement_dir) && mkpath(refinement_dir)
     state_refined_filename = "$refinement_dir/states.bson"
@@ -43,20 +95,7 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
 	reloaded_states_flag = !isnothing(all_states_refined)
 	reloaded_results_flag = !isnothing(P̌)
 
-    # # > This is all the same w.r.t. the main script, except for the variable name...
-    # if config["reuse_results"] && isfile(state_refined_filename) && isfile(imdp_refined_filename)
-    #     # TODO: Function for reloading 
-    #     @info "Reloading all state information and IMDP transitions from $results_dir"
-	# 	state_dict = BSON.load(state_refined_filename)
-
-	# 	all_states_refined = state_dict[:states]
-	# 	all_state_images_refined = state_dict[:images]
-	# 	all_σ_bounds_refined = state_dict[:bounds]
-		
-	# 	imdp_dict = BSON.load(imdp_refined_filename)
-	# 	P̌ = imdp_dict[:Pcheck]
-	# 	P̂ = imdp_dict[:Phat]
-    # # > This is all the same w.r.t. the main script, except for the variable name...
+    refinement_procedure = config_entry_try(config["workspace"], "refinement_procedure", "uniform") 
 
     if !reloaded_results_flag
 		# Load the existing global GPs
@@ -80,15 +119,9 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
     if local_gps_flag
         @info "Performing local GP regression with $local_gps_nns-nearest neighbors"
         # Reload the data here
-        data_filename = config["system"]["datafile"]
-        res = BSON.load(data_filename)
-        data_dict = res[:dataset_dict]
-        input_data = data_dict[:input]
-        output_data = data_dict[:output]
-        if delta_input_flag
-            output_data -= input_data[1:size(output_data,1),:]
-        end
+        input_data, output_data, _, delta_input_flag, _, _ = parse_data_params(config["system"], load_data=true)
         local_gps_data = (input_data, output_data)
+        # TODO: Generalize this!
         local_gp_metadata = [ones(length(lipschitz_bound)), 0.65*ones(length(lipschitz_bound)), local_gps_nns]
     else
         local_gps_data = nothing
@@ -98,21 +131,24 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
     if !reloaded_results_flag 
         @info "Parsing metadata and identifying indexes for refinement"
         # Parse the config for necessary info
-        L = SA_F64[config["workspace"]["lower"]...]
-        U = SA_F64[config["workspace"]["upper"]...]
-        X_extent = [[l u] for (l, u) in zip(L,U)]
+        _, _, X_extent, _, _ = parse_discretization_params(config["workspace"])	
 
         num_refine_states = length(states_to_refine)
         frac = length(states_to_refine)/num_states
-        @info "Refining $num_refine_states of $num_states ($frac) states"
+        @info "Refining $num_refine_states of $num_states ($frac) states with $refinement_procedure procedure"
 
         # Generate new discretization
         new_states_list = []
         new_state_dict = Dict() # Mapping to help update transition probability intervals
         old_state_dict = Dict()
         new_state_idx = num_states - num_refine_states + 1 # We now have a dictionary that can be used to go from new state to old state!! 
+        # refinement_procedure = "uniform"
         for state_to_refine in states_to_refine
-            new_states = uniform_refinement(all_states_SA[state_to_refine])
+            if refinement_procedure == "uniform"
+                new_states = uniform_refinement(all_states_SA[state_to_refine])
+            elseif refinement_procedure == "gp_derivative"
+                new_states = gp_derivative_refinement(all_states_SA[state_to_refine], all_state_images[state_to_refine], gps)
+            end
             push!(new_states_list, new_states...)
             old_state_dict[state_to_refine] = []
             for state in new_states
@@ -201,6 +237,7 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
         P̌_hot = P̌_old[hot_idxs, hot_idxs] 
         P̂_hot = P̂_old[hot_idxs, hot_idxs] 
 
+        # TODO: Add process noise here!
         P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_refined, all_state_images_refined, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_σ_bounds_refined, P̌_hot=P̌_hot, P̂_hot=P̂_hot, target_idxs_dict=target_idxs_dict, local_gp_metadata=local_gp_metadata)
     end
 
@@ -228,7 +265,7 @@ end
 function find_states_to_refine(P̂, res_mat, all_states; p_threshold=0.95, refine_targets=false, refine_unsafe=false, diameter_threshold=0.0)
 
     n_yes = findall(x -> x>=p_threshold, res_mat[:,3])
-    n_no = findall(x -> x<p_threshold, res_mat[1:end-1,4])
+    n_no = findall(x -> x<p_threshold, res_mat[1:end,4])
 
     if isempty(n_yes)
         # if nothing is yes, such as in safety, return all states for refinement
@@ -265,9 +302,7 @@ function find_states_to_refine(P̂, res_mat, all_states; p_threshold=0.95, refin
             setdiff!(poss_targets, states_to_refine)
             union!(states_to_refine, poss_targets)
         end
-
     end
-
 
     if diameter_threshold > 0.0
         state_diameters = [sqrt(sum((all_states[i][:,1]-all_states[i][:,end-1]).^2)) for i in states_to_refine]
