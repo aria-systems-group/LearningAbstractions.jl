@@ -138,7 +138,7 @@ function fast_check(mean_pt, mean_target, ϵ_crit, η_crit, image_radius, set_ra
     return flag
 end
 
-function transition_inverval(X, Y, p_rkhs; process_noise_dist=nothing, gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_manual=nothing, local_RKHS_bound=nothing, local_gp_metadata=nothing)
+function transition_inverval(X, Y, p_rkhs; process_noise_dist=nothing, gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_manual=nothing, local_RKHS_bound=nothing, local_gp_metadata=nothing, multibounds_flag=true)
     # Get the dimensions of the states - if control is embedded, modify to only look at state-space
     dims = size(X,1) 
     if dims < size(Y,1)
@@ -190,10 +190,12 @@ function transition_inverval(X, Y, p_rkhs; process_noise_dist=nothing, gp_rkhs_i
         # This is 1.0 - Pr[learning error is larger than max distance between the sets]
         # By default, rkhs_prob_vector returns a vector with the probability of each component /not/ being epsilon close
         if !isnothing(gp_rkhs_info)
-            # p̂_vec = rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,2], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata, p_rkhs=p_rkhs)   
-            # @info p̂_vec
-            o = ones(length(Pr_process))
-            p̂ = prod(o.*Pr_process) 
+            if multibounds_flag
+                p̂_vec = rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,2], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata, p_rkhs=p_rkhs)   
+            else
+                p̂_vec = ones(length(Pr_process))
+            end
+            p̂ = prod(p̂_vec.*Pr_process) 
         else
             p̂ = 1.              # UB result for full + partial intersection
         end
@@ -219,8 +221,14 @@ function transition_inverval(X, Y, p_rkhs; process_noise_dist=nothing, gp_rkhs_i
         if !isnothing(gp_rkhs_info)
             # These return the probabilities of LEQ -- take the difference 
             p_leq_lb = rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,1], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata, p_rkhs=p_rkhs)
-            # p_leq_ub = rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,2], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata, p_rkhs=p_rkhs)
-            p_interval = (1.0 .- p_leq_lb.*Pr_process) # - (1.0 .- p_leq_ub).*(1.0 .- Pr_process)
+
+            if multibounds_flag
+                p_leq_ub = rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,2], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata, p_rkhs=p_rkhs)
+                ub_term = (1.0 .- p_leq_ub).*(1.0 .- Pr_process)
+            else
+                ub_term = 0.0
+            end
+            p_interval = (1.0 .- p_leq_lb.*Pr_process) - ub_term
             p̂ = prod(p_interval) 
         else
             p̂ = 0. 
