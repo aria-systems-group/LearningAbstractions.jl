@@ -62,6 +62,7 @@ function learn_abstraction(config_filename::String;)
 	diameter_domain = sqrt(sum((L-U).^2))
 	desired_spacing = SA_F64[config["discretization"]["grid_spacing"]...]
 	grid, grid_spacing = LearningAbstractions.grid_generator(L, U, desired_spacing)
+	multibounds_flag = config_entry_try(config["discretization"], "multibounds_flag", false)
 	lipschitz_bound = config["system"]["lipschitz_bound"] 
 
 	# Local GP setup
@@ -139,7 +140,7 @@ function learn_abstraction(config_filename::String;)
 
 	if !reloaded_results_flag	
 		@info "Calculating the transition probability intervals"
-		P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, LearningAbstractions.extent_to_SA(X_extent), process_noise_dist=process_noise_dist, gp_rkhs_info=gp_info, σ_bounds_all=all_state_σ_bounds, local_gp_metadata=local_gp_metadata)
+		P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, LearningAbstractions.extent_to_SA(X_extent), process_noise_dist=process_noise_dist, gp_rkhs_info=gp_info, σ_bounds_all=all_state_σ_bounds, local_gp_metadata=local_gp_metadata, multibounds_flag=multibounds_flag)
 	end
 	
 	if config["save_results"] && !reloaded_results_flag

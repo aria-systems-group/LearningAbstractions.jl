@@ -17,7 +17,7 @@ function intersects(X, Y)
 end
 
 
-function generate_all_transitions(states, images, full_set; process_noise_dist=nothing, gp_rkhs_info=nothing, σ_bounds_all=nothing, ϵ_manual=nothing, local_gp_metadata=nothing, P̌_hot=nothing, P̂_hot=nothing, target_idxs_dict=nothing)
+function generate_all_transitions(states, images, full_set; process_noise_dist=nothing, gp_rkhs_info=nothing, σ_bounds_all=nothing, ϵ_manual=nothing, local_gp_metadata=nothing, P̌_hot=nothing, P̂_hot=nothing, target_idxs_dict=nothing, multibounds_flag=false)
     num_states = length(states) + 1 # All states plus the unsafe state!
     P̌ = spzeros(num_states, num_states)
     P̂ = spzeros(num_states, num_states) 
@@ -43,7 +43,7 @@ function generate_all_transitions(states, images, full_set; process_noise_dist=n
     p_vec = zeros(size(images[1],1))
     for i in setdiff(1:num_states-1, hot_idx)   # Always calculating transitions to the unsafe set!
         σ_bounds = isnothing(gp_rkhs_info) ? nothing : σ_bounds_all[i]  
-        p̌, p̂ = transition_inverval(images[i], full_set, p_vec, process_noise_dist=process_noise_dist, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds, ϵ_manual=ϵ_manual, local_gp_metadata=local_gp_metadata) 
+        p̌, p̂ = transition_inverval(images[i], full_set, p_vec, process_noise_dist=process_noise_dist, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds, ϵ_manual=ϵ_manual, local_gp_metadata=local_gp_metadata, multibounds_flag=multibounds_flag) 
         P̌[i,end] = 1 - p̂
         P̂[i,end] = 1 - p̌ 
     end 
@@ -55,7 +55,7 @@ function generate_all_transitions(states, images, full_set; process_noise_dist=n
     return P̌, P̂ 
 end
 
-function generate_pairwise_transitions(states, images; process_noise_dist=nothing, gp_rkhs_info=nothing, σ_bounds_all=nothing, ϵ_manual=nothing, local_gp_metadata=nothing, target_idxs_dict=nothing)
+function generate_pairwise_transitions(states, images; process_noise_dist=nothing, gp_rkhs_info=nothing, σ_bounds_all=nothing, ϵ_manual=nothing, local_gp_metadata=nothing, target_idxs_dict=nothing, multibounds_flag=false)
 
     dims = size(images[1],1)
     num_states = length(states)
@@ -109,7 +109,7 @@ function generate_pairwise_transitions(states, images; process_noise_dist=nothin
             statep_sa = states[j]
             state_radius_j = norm(statep_sa[1:dims,1] - statep_sa[1:dims,end-1])/2 
             if fast_check(mean_image, all_state_means[j][1:dims], ϵ_crit, η_crit, image_radius, state_radius_j) 
-                res = transition_inverval(image, statep_sa, p_rkhs_vec_all[Threads.threadid()], process_noise_dist=process_noise_dist, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds, ϵ_manual=ϵ_manual, local_RKHS_bound=RKHS_bound_local, local_gp_metadata=local_gp_metadata) 
+                res = transition_inverval(image, statep_sa, p_rkhs_vec_all[Threads.threadid()], process_noise_dist=process_noise_dist, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds, ϵ_manual=ϵ_manual, local_RKHS_bound=RKHS_bound_local, local_gp_metadata=local_gp_metadata, multibounds_flag=multibounds_flag) 
                 P̌_temp[Threads.threadid()][j,i] = res[1]
                 P̂_temp[Threads.threadid()][j,i] = res[2]
             else
@@ -138,7 +138,7 @@ function fast_check(mean_pt, mean_target, ϵ_crit, η_crit, image_radius, set_ra
     return flag
 end
 
-function transition_inverval(X, Y, p_rkhs; process_noise_dist=nothing, gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_manual=nothing, local_RKHS_bound=nothing, local_gp_metadata=nothing, multibounds_flag=true)
+function transition_inverval(X, Y, p_rkhs; process_noise_dist=nothing, gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_manual=nothing, local_RKHS_bound=nothing, local_gp_metadata=nothing, multibounds_flag=false)
     # Get the dimensions of the states - if control is embedded, modify to only look at state-space
     dims = size(X,1) 
     if dims < size(Y,1)
@@ -228,7 +228,7 @@ function transition_inverval(X, Y, p_rkhs; process_noise_dist=nothing, gp_rkhs_i
             else
                 ub_term = 0.0
             end
-            p_interval = (1.0 .- p_leq_lb.*Pr_process) - ub_term
+            p_interval = (1.0 .- p_leq_lb.*Pr_process) .- ub_term
             p̂ = prod(p_interval) 
         else
             p̂ = 0. 

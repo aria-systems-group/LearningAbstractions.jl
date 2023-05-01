@@ -26,6 +26,7 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
 	norm_weights = config_entry_try(config["workspace"], "norm_weights", ones(size(all_states_SA[1],1)))
     distance_metric = GeneralMetric(angle_dims, norm_weights)
     results_dir = config["results_directory"]
+    multibounds_flag = config_entry_try(["discretization"], "multibounds_flag", false)
 
     results_dir = config["results_directory"]
 	base_results_dir = "$results_dir/base"
@@ -42,21 +43,6 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
     all_states_refined, all_state_images_refined, all_σ_bounds_refined, P̌, P̂ = load_results(state_refined_filename, imdp_refined_filename, reuse_states=config["reuse_states"], reuse_results=config["reuse_results"])
 	reloaded_states_flag = !isnothing(all_states_refined)
 	reloaded_results_flag = !isnothing(P̌)
-
-    # # > This is all the same w.r.t. the main script, except for the variable name...
-    # if config["reuse_results"] && isfile(state_refined_filename) && isfile(imdp_refined_filename)
-    #     # TODO: Function for reloading 
-    #     @info "Reloading all state information and IMDP transitions from $results_dir"
-	# 	state_dict = BSON.load(state_refined_filename)
-
-	# 	all_states_refined = state_dict[:states]
-	# 	all_state_images_refined = state_dict[:images]
-	# 	all_σ_bounds_refined = state_dict[:bounds]
-		
-	# 	imdp_dict = BSON.load(imdp_refined_filename)
-	# 	P̌ = imdp_dict[:Pcheck]
-	# 	P̂ = imdp_dict[:Phat]
-    # # > This is all the same w.r.t. the main script, except for the variable name...
 
     if !reloaded_results_flag
 		# Load the existing global GPs
@@ -76,6 +62,7 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
     local_gps_flag = config["local"]["use_local_gps"]
     local_gps_nns = config["local"]["local_gp_neighbors"]
     delta_input_flag = config_entry_try(config["system"], "delta_input_flag", false) # flag to indicate training on the delta from each point, i.e.
+    approximate_σ_flag = config_entry_try(config["system"], "approximate_sigma", false)
 
     if local_gps_flag
         @info "Performing local GP regression with $local_gps_nns-nearest neighbors"
@@ -191,7 +178,7 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
         deleteat!(all_state_images_refined, states_to_refine)
         deleteat!(all_σ_bounds_refined, states_to_refine)
 
-        new_images, new_σ_bounds = state_bounds(new_states_list, gps; local_gps_flag=local_gps_flag, local_gps_data=local_gps_data, local_gps_nns=local_gps_nns, metric=distance_metric, delta_input_flag=delta_input_flag)
+        new_images, new_σ_bounds = state_bounds(new_states_list, gps; local_gps_flag=local_gps_flag, local_gps_data=local_gps_data, local_gps_nns=local_gps_nns, metric=distance_metric, delta_input_flag=delta_input_flag, approximate_σ_flag=approximate_σ_flag)
         all_state_images_refined = vcat(all_state_images_refined, new_images)
         all_σ_bounds_refined = vcat(all_σ_bounds_refined, new_σ_bounds)
     end
@@ -201,7 +188,7 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
         P̌_hot = P̌_old[hot_idxs, hot_idxs] 
         P̂_hot = P̂_old[hot_idxs, hot_idxs] 
 
-        P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_refined, all_state_images_refined, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_σ_bounds_refined, P̌_hot=P̌_hot, P̂_hot=P̂_hot, target_idxs_dict=target_idxs_dict, local_gp_metadata=local_gp_metadata)
+        P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_refined, all_state_images_refined, LearningAbstractions.extent_to_SA(X_extent), gp_rkhs_info=gp_info, σ_bounds_all=all_σ_bounds_refined, P̌_hot=P̌_hot, P̂_hot=P̂_hot, target_idxs_dict=target_idxs_dict, local_gp_metadata=local_gp_metadata, multibounds_flag=multibounds_flag)
     end
 
     if config["save_results"] && !reloaded_results_flag
