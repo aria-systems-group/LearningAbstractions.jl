@@ -37,7 +37,7 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
 	gps_filename = "$base_results_dir/gps.bson"
     lipschitz_bound = config["system"]["lipschitz_bound"] 
 
-    refinement_dir = isnothing(refinement_dirname) ? "$results_dir/refined" : "$results_dir/$refinement_dirname"
+    refinement_dir = isnothing(refinement_dirname) ? "$config_dir/$results_dir/refined" : "$config_dir/$results_dir/$refinement_dirname"
     !isdir(refinement_dir) && mkpath(refinement_dir)
     state_refined_filename = "$refinement_dir/states.bson"
 	imdp_refined_filename = "$refinement_dir/imdp.bson"

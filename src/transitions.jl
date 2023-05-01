@@ -22,7 +22,7 @@ function generate_all_transitions(states, images, full_set; process_noise_dist=n
     P̌ = spzeros(num_states, num_states)
     P̂ = spzeros(num_states, num_states) 
 
-    P̌[1:end-1, 1:end-1], P̂[1:end-1, 1:end-1] = generate_pairwise_transitions(states, images, process_noise_dist=process_noise_dist, gp_rkhs_info=gp_rkhs_info, σ_bounds_all=σ_bounds_all, ϵ_manual=ϵ_manual, local_gp_metadata=local_gp_metadata, target_idxs_dict=target_idxs_dict) 
+    P̌[1:end-1, 1:end-1], P̂[1:end-1, 1:end-1] = generate_pairwise_transitions(states, images, process_noise_dist=process_noise_dist, gp_rkhs_info=gp_rkhs_info, σ_bounds_all=σ_bounds_all, ϵ_manual=ϵ_manual, local_gp_metadata=local_gp_metadata, target_idxs_dict=target_idxs_dict, multibounds_flag=multibounds_flag) 
 
     hot_idx = []
     if !isnothing(P̌_hot) && !isnothing(P̂_hot)
