@@ -224,7 +224,7 @@ function transition_inverval(X, Y, p_rkhs; process_noise_dist=nothing, gp_rkhs_i
 
             if multibounds_flag
                 p_leq_ub = rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,2], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata, p_rkhs=p_rkhs)
-                ub_term = (1.0 .- p_leq_ub).*(1.0 .- Pr_process)
+                ub_term = (1.0 .- p_leq_ub).*(Pr_process)
             else
                 ub_term = 0.0
             end
