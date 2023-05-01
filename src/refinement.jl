@@ -17,6 +17,8 @@ Refine the abstraction.
 """
 # TODO: There is a lot of redundant code here with the find images function. Consolidate when I have more time. 
 function refine_abstraction(config_filename, all_states_SA, all_state_images, all_σ_bounds, states_to_refine, P̌_old, P̂_old; refinement_dirname=nothing)
+    
+    config_dir = dirname(config_filename)
     f = open(config_filename)
 	config = TOML.parse(f)
 	close(f)
@@ -29,7 +31,7 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
     multibounds_flag = config_entry_try(["discretization"], "multibounds_flag", false)
 
     results_dir = config["results_directory"]
-	base_results_dir = "$results_dir/base"
+    base_results_dir = "$config_dir/$results_dir/base"
 	# state_filename = "$results_dir/states.bson"
 	# imdp_filename = "$results_dir/imdp.bson"
 	gps_filename = "$base_results_dir/gps.bson"
@@ -68,7 +70,8 @@ function refine_abstraction(config_filename, all_states_SA, all_state_images, al
         @info "Performing local GP regression with $local_gps_nns-nearest neighbors"
         # Reload the data here
         data_filename = config["system"]["datafile"]
-        res = BSON.load(data_filename)
+        full_data_filename = "$config_dir/$data_filename"
+	    res = BSON.load(full_data_filename)
         data_dict = res[:dataset_dict]
         input_data = data_dict[:input]
         output_data = data_dict[:output]

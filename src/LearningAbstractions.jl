@@ -48,6 +48,8 @@ function config_entry_try(dict, key, default_value)
 end
 
 function learn_abstraction(config_filename::String;)
+
+	config_dir = dirname(config_filename)
 	f = open(config_filename)
 	config = TOML.parse(f)
 	close(f)
@@ -74,7 +76,8 @@ function learn_abstraction(config_filename::String;)
 
 	# Datafile parsing
 	data_filename = config["system"]["datafile"]
-	res = BSON.load(data_filename)
+	full_data_filename = "$config_dir/$data_filename"
+	res = BSON.load(full_data_filename)
 	data_dict = res[:dataset_dict]
 	input_data = data_dict[:input]
 	output_data = data_dict[:output]
@@ -99,7 +102,7 @@ function learn_abstraction(config_filename::String;)
 	end
 
 	results_dir = config["results_directory"]
-	base_results_dir = "$results_dir/base"
+	base_results_dir = "$config_dir/$results_dir/base"
 	mkpath(base_results_dir)
 	state_filename = "$base_results_dir/states.bson"
 	imdp_filename = "$base_results_dir/imdp.bson"
