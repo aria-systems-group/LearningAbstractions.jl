@@ -158,7 +158,7 @@ function create_local_gps!(preallocs, global_gps, center, tree, x, y)
         update_cK_SE!(preallocs.gps[i].cK, preallocs.gps[i].x, global_gps[i].kernel.σ2, global_gps[i].kernel.ℓ2; σgp2=exp(global_gps[i].logNoise.value)^2)
         # Calculate cholesky decomp. of cK in place
         preallocs.gps[i].cKchol[:] = preallocs.gps[i].cK
-        cholesky!(preallocs.gps[i].cKchol) 
+        cholesky!(Hermitian(preallocs.gps[i].cKchol)) 
         preallocs.gps[i].cKcholut.data[:] = preallocs.gps[i].cKchol
         # Calculate the inverse of cK and α vector
         preallocs.gps[i].K_inv.data[:] = preallocs.gps[i].cK
