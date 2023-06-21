@@ -1,0 +1,18 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: LearningAbstractions.jl
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: John
+    family-names: Skovbekk
+    email: john.skobekk@colorado.edu
+    affiliation: CU Boulder
+repository-code: >-
+  https://github.com/aria-systems-group/LearningAbstractions.jl
+url: 'https://ariasystems.group/projects/safe-synthesis/'
+license: MIT
