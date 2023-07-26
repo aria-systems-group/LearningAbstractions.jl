@@ -132,111 +132,79 @@ function generate_pairwise_transitions(states, images; process_noise_dist=nothin
 end
 
 "Determine the set of states that will have non-zero transition probability upper bounds."
-# ! Need to verify this fast check
 function fast_check(mean_pt, mean_target, ϵ_crit, η_crit, image_radius, set_radius)
     flag = norm(mean_pt - mean_target) < ϵ_crit + η_crit + image_radius + set_radius
     return flag
 end
 
-function transition_inverval(X, Y, p_rkhs; process_noise_dist=nothing, gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_manual=nothing, local_RKHS_bound=nothing, local_gp_metadata=nothing, multibounds_flag=false)
+function transition_inverval(X, Y, p_rkhs; process_noise_dist=nothing, gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_manual=nothing, local_RKHS_bound=nothing, local_gp_metadata=nothing, multibounds_flag=false, η_manual = 0.0)
     # Get the dimensions of the states - if control is embedded, modify to only look at state-space
     dims = size(X,1) 
-    if dims < size(Y,1)
-        Yr = Y[1:dims, 1:dims^2] #! This is erroring out down the line. Why?
+    if dims < size(Y,1) # todo: holdover from control as state
+        Yr = Y[1:dims, 1:dims^2] # TODO: This is erroring out for 1D case
         Y = SMatrix{dims, 2^dims}(Yr)
     end
 
     intersect_flag = intersects(SA_to_extent(X), SA_to_extent(Y))
 
-    #===
-    Account for the process nosie, if any
-    ===#
-    η_manual = 0.1
-    Pr_process = ones(dims)
-
-    if typeof(gp_rkhs_info) == Dict{String, Any}
-        gp_rkhs_info = GPRelatedInformation(gp_rkhs_info["γ_bounds"],
-                            gp_rkhs_info["RKHS_norm_bounds"],	
-                            gp_rkhs_info["logNoise"],	
-                            gp_rkhs_info["post_scale_factors"],	
-                            gp_rkhs_info["Kinv"],	
-                            gp_rkhs_info["f_sup"],	
-                            gp_rkhs_info["measurement_noise"],	
-                            gp_rkhs_info["process_noise"],	)
-    end
-
-    if !isnothing(gp_rkhs_info) && !isnothing(process_noise_dist) # TODO: Separate process reliance from GP
-        for i in 1:dims
-            Pr_process[i] =  abs_cdf(process_noise_dist, η_manual) # Per dimension, assuming the same on each axis
-        end
-        η_offset = η_manual
+    if intersect_flag
+        containment_flag, _ = containment_check(X, Y)
     else
-        η_offset = 0.
+        containment_flag = false
+    end
+    
+    Pr_process = ones(dims)     # todo: we can reuse these vectors
+    Pr_learning = ones(dims)
+
+    if !isnothing(process_noise_dist) && !(intersect_flag && !containment_flag)
+        η_manual = 0.1 # todo: don't set this here eh
+        Pr_process[:] .=  abs_cdf(process_noise_dist, η_manual) # Per dimension, assuming the same on each axis
     end
 
-    dis_comps = zeros(dims, 2)
-    dis_fcn!(dis_comps, X, Y)
-
-    dis_comps[:,1] .-= η_offset
-    [dis_comps[i,1] = dis_comps[i,1] < 0.0 ? 0.0 : dis_comps[i,1] for i=1:dims]
-    dis_comps[:,2] .+= η_offset
-
-    #===
-    Full or Partial Intersection
-    ===#
-    if intersect_flag 
-        # TODO: Improve the partial intersection case
-        # If the image and target intersect, then the UB probability is 1.0 by default. Then, we want to remove the probability mass of those points that would remove the intersection. 
-        # This is 1.0 - Pr[learning error is larger than max distance between the sets]
-        # By default, rkhs_prob_vector returns a vector with the probability of each component /not/ being epsilon close
-        if !isnothing(gp_rkhs_info)
-            if multibounds_flag
-                p̂_vec = rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,2], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata, p_rkhs=p_rkhs)   
-            else
-                p̂_vec = ones(length(Pr_process))
-            end
-            p̂ = prod(p̂_vec.*Pr_process) 
-        else
-            p̂ = 1.              # UB result for full + partial intersection
-        end
-        containment_flag, min_distance = containment_check(X, Y)
-        #===
-        Full Intersection
-        ===#
-        if containment_flag     
-            if !isnothing(gp_rkhs_info)
-                # Upper-bound is the same as above.
-                p̌_vec = rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,1], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata)
-                p̌ = prod(p̌_vec.*Pr_process) 
-            else
-                p̌ = 1.          
-            end
-        else
-            p̌ = 0.           # LB result for partial intersection
-        end
-    #===
-    No Intersection
-    ===#
-    else
-        if !isnothing(gp_rkhs_info)
-            # These return the probabilities of LEQ -- take the difference 
-            p_leq_lb = rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,1], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata, p_rkhs=p_rkhs)
-
-            if multibounds_flag
-                p_leq_ub = rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,2], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata, p_rkhs=p_rkhs)
-                ub_term = (1.0 .- p_leq_ub).*(Pr_process)
-            else
-                ub_term = 0.0
-            end
-            p_interval = (1.0 .- p_leq_lb.*Pr_process) .- ub_term
-            p̂ = prod(p_interval) 
-        else
-            p̂ = 0. 
-        end
-        p̌ = 0.
+    if !isnothing(gp_rkhs_info) && !(intersect_flag && !containment_flag)
+        dis_comps = zeros(dims, 2)
+        dis_fcn!(dis_comps, X, Y)
+        offset_distance!(dis_comps, η_manual)
+        Pr_learning[:] = rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,1], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata, p_rkhs=p_rkhs)
     end
+
+    p̂ = upper_bound_prob(intersect_flag, Pr_process, Pr_learning)
+    p̌ = lower_bound_prob(containment_flag, Pr_process, Pr_learning)
+
     @assert p̌ <= p̂
     return [p̌, p̂]
+end
+
+"""
+    lower_bound_prob
+
+Computes the lower-bound probability of transition between states given the distance components between the states.
+"""
+function lower_bound_prob(containment_flag::Bool, constraint1_probs::Vector{Float64}, constraint2_probs::Vector{Float64})
+    if !containment_flag # some of the image lies outside the target set
+        return 0
+    end
+    p̌ = prod(constraint1_probs.*constraint2_probs) 
+    return p̌
+end
+
+"""
+    upper_bound_prob
+
+Computes the lower-bound probability of transition between states given the distance components between the states.
+"""
+function upper_bound_prob(intersect_flag::Bool, constraint1_probs::Vector{Float64}, constraint2_probs::Vector{Float64})
+    if intersect_flag
+        return 1
+    end
+    p̂ = prod(constraint1_probs.*constraint2_probs) 
+    return p̂
+end
+
+function offset_distance!(distances, offset)
+    distances[:,1] .-= offset
+    [distances[i,1] = distances[i,1] < 0.0 ? 0.0 : distances[i,1] for i in axes(distances,1)]
+    distances[:,2] .+= offset
 end
 
 function dis_fcn!(res, X::AbstractMatrix, Y::AbstractMatrix)
