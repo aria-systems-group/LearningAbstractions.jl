@@ -43,4 +43,15 @@ using Test
     interval = LearningAbstractions.transition_inverval(image, state, nothing)
     @test interval[2] == 1.0
     # TODO: Add tests for RKHS
+
+    # Test the true transition probability function
+    expected_result = [0, 0.61, 0.39, 0]
+    indeces = [1, 2, 3, 4]
+
+    pmin = [0, 0.5, 0.39, 0] 
+    pmax = [0, 0.61, 0.41, 0]
+
+    res = LearningAbstractions.true_transition_propabilities(pmin, pmax, indeces)
+
+    @test res == expected_result
 end

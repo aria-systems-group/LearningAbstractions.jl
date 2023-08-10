@@ -27,6 +27,8 @@ using Random
 
 global status_bar_period = 30.0
 
+global fast_transitions_check = true;
+
 include("gpwrapper.jl")
 include("rkhs.jl")
 include("discretization.jl")
@@ -34,6 +36,7 @@ include("images.jl")
 include("refinement.jl")
 include("transitions.jl")
 include("imdptools.jl")
+include("cluster.jl")
 include("merging.jl")
 include("output.jl")
 
@@ -169,6 +172,7 @@ end
 function generate_abstraction(config_filename::String, f_sys; linear_map_flag=false)	# System function f
 
 	# > 0. Get the deets from the config files
+	config_dir = dirname(config_filename)
 	f = open(config_filename)
 	config = TOML.parse(f)
 	close(f)
@@ -180,26 +184,18 @@ function generate_abstraction(config_filename::String, f_sys; linear_map_flag=fa
 	desired_spacing = SA_F64[config["discretization"]["grid_spacing"]...]
 	grid, grid_spacing = LearningAbstractions.grid_generator(L, U, desired_spacing)
 
-	# Datafile parsing
-	data_filename = config["system"]["datafile"]
-	res = BSON.load(data_filename)
-	data_dict = res[:dataset_dict]
-	if data_dict[:noise]["measurement_std"] > 0.0 && data_dict[:noise]["process_std"] > 0.0
-		@error "Only one of either measurement or process noise is supported."	
-	end
-	process_noise_flag = data_dict[:noise]["process_std"] > 0.0 
-
-	if process_noise_flag
-		noise_config = data_dict[:noise] 
-		process_noise_dist = create_noise_dist(noise_config)
-		@info "System has process noise"
-	else
-		process_noise_dist = nothing
-		@info "System has measurement noise"
+	# Create process noise distribution
+	process_noise_mu = config_entry_try(config["system"], "process_noise_mu", 0.0)	
+	process_noise_sigma =  config_entry_try(config["system"], "process_noise_sigma", 0.0)	
+	process_noise_dist = nothing
+	eta_manual = nothing
+	if process_noise_sigma > 0
+		process_noise_dist = Normal(process_noise_mu, process_noise_sigma)
+		eta_manual = config_entry_try(config["discretization"], "eta_manual", 0.1) 
 	end
 
 	results_dir = config["results_directory"]
-	base_results_dir = "$results_dir/known_system"
+	base_results_dir = "$config_dir/$results_dir/known_system"
 	mkpath(base_results_dir)
 	state_filename = "$base_results_dir/states.bson"
 	imdp_filename = "$base_results_dir/imdp.bson"
@@ -247,7 +243,7 @@ function generate_abstraction(config_filename::String, f_sys; linear_map_flag=fa
 	# > 2. Generate transitions 
 	if !reloaded_results_flag	
 		@info "Calculating the transition probability intervals"
-		P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, LearningAbstractions.extent_to_SA(X_extent), process_noise_dist=process_noise_dist)
+		P̌, P̂ = LearningAbstractions.generate_all_transitions(all_states_SA, all_state_images, LearningAbstractions.extent_to_SA(X_extent), process_noise_dist=process_noise_dist, η_manual=eta_manual)
 	end
 
 	# > 3. Save and move on!
@@ -270,6 +266,38 @@ function generate_abstraction(config_filename::String, f_sys; linear_map_flag=fa
 	end
 
 	return P̌, P̂, all_states_SA, base_results_dir, all_state_images, all_state_σ_bounds
+end
+
+function grid_to_explicit(grid, grid_spacing)
+	n_states = length(grid)
+	explicit_states = Vector{SMatrix}(undef, n_states)
+	[explicit_states[i] = lower_to_SA(grid_lower, grid_spacing) for (i,grid_lower) in enumerate(grid)]
+	return explicit_states
+end
+
+function linear_image(states::AbstractVector, linear_map)
+	explicit_images = []
+	for state in states 
+		push!(explicit_images, linear_image(state, linear_map))
+	end
+	return explicit_images
+end
+
+function linear_image(state::AbstractMatrix, linear_map)
+	lower = linear_map(state[:,1])
+    upper = linear_map(state[:,end-1])
+
+	for i = 1:length(lower)
+		if lower[i] > upper[i]
+			tmp = lower[i]
+			lower[i] = upper[i]
+			upper[i] = tmp
+		end
+	end
+
+    extent = [[lower[i], upper[i]] for i=1:length(lower)]
+    image = extent_to_SA(extent)
+	return image
 end
 
 """

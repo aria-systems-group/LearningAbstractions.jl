@@ -17,12 +17,12 @@ function intersects(X, Y)
 end
 
 
-function generate_all_transitions(states, images, full_set; process_noise_dist=nothing, gp_rkhs_info=nothing, σ_bounds_all=nothing, ϵ_manual=nothing, local_gp_metadata=nothing, P̌_hot=nothing, P̂_hot=nothing, target_idxs_dict=nothing, multibounds_flag=false)
+function generate_all_transitions(states, images, full_set; process_noise_dist=nothing, gp_rkhs_info=nothing, σ_bounds_all=nothing, ϵ_manual=nothing, η_manual=nothing, local_gp_metadata=nothing, P̌_hot=nothing, P̂_hot=nothing, target_idxs_dict=nothing, multibounds_flag=false)
     num_states = length(states) + 1 # All states plus the unsafe state!
     P̌ = spzeros(num_states, num_states)
     P̂ = spzeros(num_states, num_states) 
 
-    P̌[1:end-1, 1:end-1], P̂[1:end-1, 1:end-1] = generate_pairwise_transitions(states, images, process_noise_dist=process_noise_dist, gp_rkhs_info=gp_rkhs_info, σ_bounds_all=σ_bounds_all, ϵ_manual=ϵ_manual, local_gp_metadata=local_gp_metadata, target_idxs_dict=target_idxs_dict, multibounds_flag=multibounds_flag) 
+    P̌[1:end-1, 1:end-1], P̂[1:end-1, 1:end-1] = generate_pairwise_transitions(states, images, process_noise_dist=process_noise_dist, gp_rkhs_info=gp_rkhs_info, σ_bounds_all=σ_bounds_all, ϵ_manual=ϵ_manual, η_manual=η_manual, local_gp_metadata=local_gp_metadata, target_idxs_dict=target_idxs_dict, multibounds_flag=multibounds_flag) 
 
     hot_idx = []
     if !isnothing(P̌_hot) && !isnothing(P̂_hot)
@@ -43,7 +43,7 @@ function generate_all_transitions(states, images, full_set; process_noise_dist=n
     p_vec = zeros(size(images[1],1))
     for i in setdiff(1:num_states-1, hot_idx)   # Always calculating transitions to the unsafe set!
         σ_bounds = isnothing(gp_rkhs_info) ? nothing : σ_bounds_all[i]  
-        p̌, p̂ = transition_inverval(images[i], full_set, p_vec, process_noise_dist=process_noise_dist, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds, ϵ_manual=ϵ_manual, local_gp_metadata=local_gp_metadata, multibounds_flag=multibounds_flag) 
+        p̌, p̂ = transition_inverval(images[i], full_set, p_vec, process_noise_dist=process_noise_dist, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds, ϵ_manual=ϵ_manual, η_manual=η_manual, local_gp_metadata=local_gp_metadata, multibounds_flag=multibounds_flag) 
         P̌[i,end] = 1 - p̂
         P̂[i,end] = 1 - p̌ 
     end 
@@ -55,7 +55,7 @@ function generate_all_transitions(states, images, full_set; process_noise_dist=n
     return P̌, P̂ 
 end
 
-function generate_pairwise_transitions(states, images; process_noise_dist=nothing, gp_rkhs_info=nothing, σ_bounds_all=nothing, ϵ_manual=nothing, local_gp_metadata=nothing, target_idxs_dict=nothing, multibounds_flag=false)
+function generate_pairwise_transitions(states, images; process_noise_dist=nothing, gp_rkhs_info=nothing, σ_bounds_all=nothing, ϵ_manual=nothing, η_manual=nothing, local_gp_metadata=nothing, target_idxs_dict=nothing, multibounds_flag=false)
 
     dims = size(images[1],1)
     num_states = length(states)
@@ -105,11 +105,12 @@ function generate_pairwise_transitions(states, images; process_noise_dist=nothin
             checked_idxs += num_states
         end
 
-        Threads.@threads for j in idxs_to_check
+        # Threads.@threads 
+        for j in idxs_to_check
             statep_sa = states[j]
             state_radius_j = norm(statep_sa[1:dims,1] - statep_sa[1:dims,end-1])/2 
-            if fast_check(mean_image, all_state_means[j][1:dims], ϵ_crit, η_crit, image_radius, state_radius_j) 
-                res = transition_inverval(image, statep_sa, p_rkhs_vec_all[Threads.threadid()], process_noise_dist=process_noise_dist, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds, ϵ_manual=ϵ_manual, local_RKHS_bound=RKHS_bound_local, local_gp_metadata=local_gp_metadata, multibounds_flag=multibounds_flag) 
+            if fast_transitions_check && fast_check(mean_image, all_state_means[j][1:dims], ϵ_crit, η_crit, image_radius, state_radius_j) 
+                res = transition_inverval(image, statep_sa, p_rkhs_vec_all[Threads.threadid()], process_noise_dist=process_noise_dist, gp_rkhs_info=gp_rkhs_info, σ_bounds=σ_bounds, ϵ_manual=ϵ_manual, η_manual=η_manual, local_RKHS_bound=RKHS_bound_local, local_gp_metadata=local_gp_metadata, multibounds_flag=multibounds_flag) # ! seg fault here
                 P̌_temp[Threads.threadid()][j,i] = res[1]
                 P̂_temp[Threads.threadid()][j,i] = res[2]
             else
@@ -137,7 +138,7 @@ function fast_check(mean_pt, mean_target, ϵ_crit, η_crit, image_radius, set_ra
     return flag
 end
 
-function transition_inverval(X, Y, p_rkhs; process_noise_dist=nothing, gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_manual=nothing, local_RKHS_bound=nothing, local_gp_metadata=nothing, multibounds_flag=false, η_manual = 0.0)
+function transition_inverval(X, Y, p_rkhs; process_noise_dist=nothing, gp_rkhs_info=nothing, σ_bounds=nothing, ϵ_manual=nothing, local_RKHS_bound=nothing, local_gp_metadata=nothing, multibounds_flag=false, η_manual=nothing)
     # Get the dimensions of the states - if control is embedded, modify to only look at state-space
     dims = size(X,1) 
     if dims < size(Y,1) # todo: holdover from control as state
@@ -156,19 +157,43 @@ function transition_inverval(X, Y, p_rkhs; process_noise_dist=nothing, gp_rkhs_i
     Pr_process = ones(dims)     # todo: we can reuse these vectors
     Pr_learning = ones(dims)
 
+    dis_comps = zeros(dims, 2)
+    dis_fcn!(dis_comps, X, Y)
+    @info dis_comps
+
+    η_offset = 0
     if !isnothing(process_noise_dist) && !(intersect_flag && !containment_flag)
-        η_manual = 0.1 # todo: don't set this here eh
-        Pr_process[:] .=  abs_cdf(process_noise_dist, η_manual) # Per dimension, assuming the same on each axis
+        if !isnothing(η_manual)       # todo: kinda janky
+            η_offset = η_manual
+        else
+            # if !isnothing(ϵ_crit)
+            #     η_offset = minimum(dis_comps[:,1]) - ϵ_crit
+            #     if η_offset < 0
+            #         η_offset = 0.15
+            #     end
+            # else
+            # TODO: this is incorrect, need to compensate for $η$ then calculate the cdf. need to threshold if zero
+            η_offset = 0.05 
+
+            # end
+        end
+
+        # this is still incorrect for the min case...
+        mine = min(η_offset, minimum(dis_comps[:,1])) # use zero or eta_offset essentially
+        Pr_process[:] .= sqrt(abs_cdf(process_noise_dist, mine)) # Per dimension, assuming the same on each axis
+        # Pr_process[:] .= 1.0 - cdf(process_noise_dist, -η_offset)
     end
+    offset_distance!(dis_comps, η_offset)
 
     if !isnothing(gp_rkhs_info) && !(intersect_flag && !containment_flag)
-        dis_comps = zeros(dims, 2)
-        dis_fcn!(dis_comps, X, Y)
-        offset_distance!(dis_comps, η_manual)
         Pr_learning[:] = rkhs_prob_vector(gp_rkhs_info, σ_bounds, dis_comps[:,1], local_RKHS_bound=local_RKHS_bound, local_gp_metadata=local_gp_metadata, p_rkhs=p_rkhs)
     end
-
+    # maxe = maximum(dis_comps[:,2])
+    # @info Pr_process 
+    # Pr_process[:] .=  sqrt(abs_cdf(process_noise_dist, maxe)) 
     p̂ = upper_bound_prob(intersect_flag, Pr_process, Pr_learning)
+    # Pr_process[:] .= cdf(process_noise_dist, 1.95) - cdf(process_noise_dist, η_offset) 
+    # Pr_process[:] .=  sqrt(abs_cdf(process_noise_dist, mine)) 
     p̌ = lower_bound_prob(containment_flag, Pr_process, Pr_learning)
 
     @assert p̌ <= p̂
@@ -195,9 +220,9 @@ Computes the lower-bound probability of transition between states given the dist
 """
 function upper_bound_prob(intersect_flag::Bool, constraint1_probs::Vector{Float64}, constraint2_probs::Vector{Float64})
     if intersect_flag
-        return 1
+        return 1 
     end
-    p̂ = prod(constraint1_probs.*constraint2_probs) 
+    p̂ = prod(1 .- constraint1_probs.*constraint2_probs) 
     return p̂
 end
 
@@ -311,7 +336,7 @@ end
 Calculates the value of epsilon that a.s. bounds the RKHS regression error.
 """
 function calculate_ϵ_crit(gp_info, σ_bounds; local_RKHS_bound=nothing)
-    ϵ = 0.01
+    ϵ = 0.001
     P = 0.0
     while P != 1.0
         P = rkhs_prob_vector_single(gp_info, σ_bounds, ϵ, local_RKHS_bound=local_RKHS_bound) 
