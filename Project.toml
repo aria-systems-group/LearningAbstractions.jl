@@ -24,6 +24,7 @@ TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
 Tullio = "bc48ee85-29a4-5162-ae0b-a64e1601d4bc"
 
 [compat]
+CoordinateTransformations = "0.6"
 julia = "1.7"
 
 [extras]
